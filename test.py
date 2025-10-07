@@ -3,12 +3,10 @@ import hashlib
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 import numpy as np
 import torch
-from utils import sentence_semantic_entropy, cluster_terms_by_embedding, cluster_terms_by_nli, radflag, vase, compute_metrics
+from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli
+from utils import compute_metrics
 
-
-def embedding_method(x: str):
-    seed = int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)
-    return torch.randn(768, generator=torch.Generator().manual_seed(seed))
+embedding_method = lambda x:  torch.randn(768, generator=torch.Generator().manual_seed(int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)))
 
 class NLI:
     def __init__(self): self.model=type('',(),{'config':type('',(),{'label2id':{'entailment':0,'neutral':1,'contradiction':2}})()})()

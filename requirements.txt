@@ -1,1 +1,2 @@
 vllm > = 0.11.0
+scikit-learn
