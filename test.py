@@ -4,15 +4,10 @@ from sklearn.metrics import roc_auc_score, roc_curve, auc
 import numpy as np
 import torch
 from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli
-from utils import compute_metrics
+from utils import compute_metrics, dummy_embedding_method, DummyNLI
 
-embedding_method = lambda x:  torch.randn(768, generator=torch.Generator().manual_seed(int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)))
 
-class NLI:
-    def __init__(self): self.model=type('',(),{'config':type('',(),{'label2id':{'entailment':0,'neutral':1,'contradiction':2}})()})()
-    def __call__(self, x, batch_size=64): return [[{'label': l, 'score': 1.0 if i == torch.randint(0, len(self.model.config.label2id), (1,)).item() else 0.0} for i, l in enumerate(self.model.config.label2id)] for _ in x]
-
-nli = NLI()
+nli = DummyNLI()
 
 alpha = 1.0
 thr = 0.90
@@ -32,7 +27,7 @@ seq = [g["generated_answer"]] + normal + noisy
 gen_dict = {"normal_answers": normal, "noisy_answers": noisy, "normal_log_values": logn, "noisy_log_values": logd}
 
 # ---- embedding-based grouping ----
-ids_embd = cluster_terms_by_embedding(seq, embedding_method, threshold=thr)
+ids_embd = cluster_terms_by_embedding(seq, dummy_embedding_method, threshold=thr)
 metrics_embd =  {k + "_embd": v for k, v in compute_metrics(n, ids_embd, normal, noisy, logn, logd, alpha).items()}
 
 # ---- NLI-based grouping ----
