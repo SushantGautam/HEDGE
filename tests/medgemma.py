@@ -4,6 +4,7 @@ import os
 from tqdm.asyncio import tqdm_asyncio  
 import tqdm
 import asyncio, re
+import json
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 os.environ['MAX_PIXELS'] = '1003520'
