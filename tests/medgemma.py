@@ -12,8 +12,9 @@ os.environ['FPS_MAX_FRAMES'] = '12'
 
 from swift.llm import VllmEngine, RequestConfig, InferRequest
 
-def infer(req_iter, temperature=1.0, model_name='google/medgemma-4b-it', max_model_len=1000, use_hf=True, max_tokens=900):
-    engine = VllmEngine(model_name, max_model_len=max_model_len, use_hf=use_hf, use_async_engine=True)
+def infer(req_iter, temperature=1.0, model_name='google/medgemma-4b-it', max_model_len=1000, use_hf=True, max_tokens=850):
+    gpu_count = len(os.getenv("CUDA_VISIBLE_DEVICES", "").split(",")) if os.getenv("CUDA_VISIBLE_DEVICES") else 1
+    engine = VllmEngine(model_name, max_model_len=max_model_len, use_hf=use_hf, use_async_engine=True, tensor_parallel_size=gpu_count)
     pattern = re.compile(r"(?:<\|?.+?\|?>|\[[^\]]+\])")
 
     async def _run():
