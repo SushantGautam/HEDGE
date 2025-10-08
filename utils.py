@@ -193,6 +193,7 @@ def generate_answers(vqa_rad_test, n_samples=20, min_temp=0.1, max_temp=1.0, pro
             "original_high_temp": f(g.is_original & (g.temp == 1)),
             "distorted_high_temp": f(~g.is_original & (g.temp == 1)),
             "original_low_temp": f(g.is_original & (g.temp == 0))[0],
+            "variant_name": variant_name,
         })
 
     # 6) Produce per-variant outputs
