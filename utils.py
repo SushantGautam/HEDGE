@@ -147,7 +147,7 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
 
 
 def generate_answers(vqa_rad_test, n_samples=20, min_temp=0.1, max_temp=1.0, prompt_variants=None):
-    from tests.medgemma import infer as infer_fn
+    from tests.medgemma import infer_batched as infer_fn
 
     # 1) Build the base once
     df_base = pd.DataFrame(
@@ -206,3 +206,35 @@ def generate_answers(vqa_rad_test, n_samples=20, min_temp=0.1, max_temp=1.0, pro
         )
 
     return pd.concat(all_dfs.values(), ignore_index=True)
+
+
+
+async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cli_args={}): 
+    from vllm.utils import FlexibleArgumentParser
+    from vllm.entrypoints.openai.run_batch import make_arg_parser, main as run_batch_main
+    
+    parser = make_arg_parser(FlexibleArgumentParser())
+    args = parser.parse_args([
+        "--model", model,
+        "-i", input_file,
+        "-o", output_file,
+        "--allowed-local-media-path", allowed_media,
+        "--trust-remote-code",
+        "--dtype", "auto",
+    ])
+    setattr(args, "disable_frontend_multiprocessing", False)
+    for k, v in extra_cli_args.items():
+        setattr(args, k, v)
+    await run_batch_main(args)
+
+def run_vllm_batch_from_list(model, inputs, allowed_media):
+    # Create a temporary directory to hold both input/output files
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_file = os.path.join(tmpdir, "input.jsonl")
+        output_file = os.path.join(tmpdir, "output.jsonl")
+        with open(input_file, "w", encoding="utf-8") as f_in:
+            for item in inputs:
+                f_in.write(json.dumps(item) + "\n")
+        print("Input payload written to:", input_file, "| Output will be at:", output_file, " and cleaned after use.")
+        asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media))
+        return [json.loads(line) for line in open(output_file)]
