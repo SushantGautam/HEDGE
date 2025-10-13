@@ -221,7 +221,11 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         "--allowed-local-media-path", allowed_media,
         "--trust-remote-code",
         "--dtype", "auto",
+        "--logprobs", "1",  # number of logprobs to return per token
+        "--max-logprobs", "1",  # cap on logprobs entries
+        "--logprobs-mode", "processed_logprobs",  # normalized log-probabilities
     ])
+
     setattr(args, "disable_frontend_multiprocessing", False)
     for k, v in extra_cli_args.items():
         setattr(args, k, v)
