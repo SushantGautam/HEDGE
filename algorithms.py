@@ -6,6 +6,8 @@ from sklearn.neighbors import NearestNeighbors as NN
 import torch.nn.functional as F
 import itertools
 from tqdm import tqdm
+import gc
+
 
 
 def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
@@ -21,7 +23,7 @@ def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
 def cluster_terms_by_nli(S, nli):
     if not S: return []
     n=len(S);A,B=torch.triu_indices(n,n,1); par=list(range(n))
-    S= [ep[:1000]for ep in S] # trim to 1000 characters to avoid CUDA OOM 
+    S = [ep[:200]for ep in S] # trim to 200 characters to avoid CUDA OOM 
     preds=[max(r,key=lambda d:d["score"])["label"] for r in nli([{"text":S[i],"text_pair":S[j]} for i,j in zip(A,B)] + [{"text":S[j],"text_pair":S[i]} for i,j in zip(A,B)], batch_size=64)]
     P = np.array(preds, dtype=object).reshape(2, -1);     
     eq = torch.from_numpy((P[0] != 'CONTRADICTION') & (P[1] != 'CONTRADICTION') & ~((P[0] == 'NEUTRAL') & (P[1] == 'NEUTRAL')))
@@ -42,7 +44,7 @@ def get_nli_labels(S_batch, nli, B=256):
     ns    = [len(g) for g in S_batch]
     idx_f = [[(g,i,j) for i in range(n) for j in range(i+1,n)] for g,n in enumerate(ns)]
     idx   = list(itertools.chain.from_iterable(grp + [(g,j,i) for (g,i,j) in grp] for grp in idx_f))
-    pairs = [{"text": S_batch[g][i][:1000], "text_pair": S_batch[g][j][:1000]} for g,i,j in idx]
+    pairs = [{"text": S_batch[g][i][:200], "text_pair": S_batch[g][j][:200]} for g,i,j in idx]
 
     # dedup via dict comprehension (preserves order)
     keys  = [(p["text"], p["text_pair"]) for p in pairs]
@@ -50,9 +52,19 @@ def get_nli_labels(S_batch, nli, B=256):
     u_pairs = [{"text": k[0], "text_pair": k[1]} for k in uniq]
     map_ix  = [uniq[k] for k in keys]
     print("Total unique pairs for NLI: ", len(u_pairs))
-    chunks = tqdm((nli(b, batch_size=B, truncation=True, top_k=None) for b in (u_pairs[k:k+B] 
-            for k in range(0, len(u_pairs), B))), total=(len(u_pairs)+B-1)//B, desc="Running NLI", unit="batch")
-    pu    = [max(r, key=lambda d: d["score"])["label"] for r in itertools.chain.from_iterable(chunks)]
+    pu = []
+    for b in tqdm((u_pairs[k:k+B] for k in range(0, len(u_pairs), B)),
+                total=(len(u_pairs)+B-1)//B, desc="Running NLI", unit="batch"):
+        out = nli(b, batch_size=B, truncation=True, top_k=None)  # run one batch
+        pu.extend(max(r, key=lambda d: d["score"])["label"] for r in out)  # keep only labels
+        del out  # drop logits/probs immediately
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
     preds = [pu[i] for i in map_ix] # map backed
     lens   = [n*(n-1) for n in ns]
     splits = list(itertools.accumulate(lens))[:-1] if lens else []
@@ -79,7 +91,7 @@ def cluster_from_nli_labels(labels):
     return output
 
 def cluster_terms_by_embedding(S, embed_method, threshold=None, topk=None, metric="cosine"):
-    E = F.normalize(torch.stack([embed_method(t.strip().lower()) for t in S]).float(), p=2, dim=-1).numpy()
+    E = F.normalize(torch.stack([embed_method(t) for t in S]).float(), p=2, dim=-1).numpy()
     D, N = NN(n_neighbors=topk or len(E), metric=metric).fit(E).kneighbors(E)
     r, c = np.where((1 - D >= threshold) & (N != np.arange(len(E))[:, None])); c = N[r, c]
     G = COO((np.ones_like(r), (r, c)), shape=(len(E),) * 2); G = G + G.T

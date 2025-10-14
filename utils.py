@@ -30,14 +30,12 @@ class DummyNLI:
 
 def get_embeddings_batch(texts, model_name="all-MiniLM-L6-v2", batch_size=16):
     from sentence_transformers import SentenceTransformer
-    flat = [t for row in texts for t in row]
-    uniq = list(dict.fromkeys(flat))
+    uniq = list(dict.fromkeys(texts))
     model = SentenceTransformer(model_name)
-    uniq_emb = model.encode(uniq, convert_to_tensor=True, batch_size=batch_size)
+    uniq_emb = model.encode(uniq, convert_to_tensor=True, batch_size=batch_size, show_progress_bar=True)
     lookup = {u: e for u, e in zip(uniq, uniq_emb)}
-    out = [[lookup[t].cpu() for t in row] for row in texts]
+    out = [lookup[t].cpu() for t in texts]
     return out
-
 
 def compute_metrics(n, cluster_ids, normal, noisy, normal_logs, noisy_logs, alpha):
     ent_clean, dist_clean = sentence_semantic_entropy(normal_logs, cluster_ids[1:1+n])
@@ -247,7 +245,7 @@ def run_vllm_batch_from_list(model, inputs, allowed_media):
         asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media))
         return [json.loads(line) for line in open(output_file)]
 
-def make_seq_for_clustering(row, alpha=1.0, thr=0.90):
+def make_seq_for_clustering(row, alpha=1.0):
     normal = [d["ans"] for d in row.original_high_temp]
     noisy = [d["ans"] for d in row.distorted_high_temp][:20]
     logn = [np.mean(d["logprob"]) for d in row.original_high_temp]
@@ -257,6 +255,7 @@ def make_seq_for_clustering(row, alpha=1.0, thr=0.90):
     return {"n": n, "seq_input": seq, "normal": normal, "noisy": noisy, "logn": logn, "logd": logd, "alpha": alpha}
 
 def apply_nli_clustering(dataframe, nli_model, batch_size=1024):
+    dataframe = dataframe.copy()
     dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, axis=1)
     all_sequences = [x["seq_input"] for x in dataframe["clustering_input"]]
     nli_labels = get_nli_labels(all_sequences, nli_model, B=batch_size)
@@ -266,6 +265,32 @@ def apply_nli_clustering(dataframe, nli_model, batch_size=1024):
         lambda row: compute_metrics(
             n=row["clustering_input"]["n"],
             cluster_ids=row["cluster_nli"],
+            normal=row["clustering_input"]["normal"],
+            noisy=row["clustering_input"]["noisy"],
+            normal_logs=row["clustering_input"]["logn"],
+            noisy_logs=row["clustering_input"]["logd"],
+            alpha=row["clustering_input"]["alpha"],
+        ),
+        axis=1,
+    )
+    dataframe = dataframe.drop(columns=["clustering_input"])
+    return dataframe
+
+
+def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90):
+    dataframe = dataframex.copy()
+    dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, axis=1)
+    all_sequences = [x["seq_input"] for x in dataframe["clustering_input"]]
+    ids_embds = []
+    for seq in tqdm(all_sequences, desc="Clustering all sequences by embedding", unit="sequence"):
+        ids_embd = cluster_terms_by_embedding(seq, embedding_cached_fn, threshold=threshold)
+        ids_embds.append(ids_embd)
+
+    dataframe["cluster_embed"] = ids_embds
+    dataframe["metrics_embed"] = dataframe.apply(
+        lambda row: compute_metrics(
+            n=row["clustering_input"]["n"],
+            cluster_ids=row["cluster_embed"],
             normal=row["clustering_input"]["normal"],
             noisy=row["clustering_input"]["noisy"],
             normal_logs=row["clustering_input"]["logn"],
