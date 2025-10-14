@@ -4,6 +4,8 @@ from scipy.sparse import coo_matrix as COO
 from scipy.sparse.csgraph import connected_components as CC
 from sklearn.neighbors import NearestNeighbors as NN
 import torch.nn.functional as F
+import itertools
+
 
 def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
     logls, semids = torch.as_tensor(mean_log_liks, dtype=torch.float32), torch.as_tensor(semantic_ids, dtype=torch.long)
@@ -19,8 +21,6 @@ def cluster_terms_by_nli(S, nli):
     if not S: return []
     n=len(S);A,B=torch.triu_indices(n,n,1); par=list(range(n))
     preds=[max(r,key=lambda d:d["score"])["label"] for r in nli([{"text":S[i],"text_pair":S[j]} for i,j in zip(A,B)] + [{"text":S[j],"text_pair":S[i]} for i,j in zip(A,B)], batch_size=64)]
-    # labs=torch.tensor([nli.model.config.label2id[p] for p in preds]).reshape(2,-1)
-    # eq=(labs[0]!=0)&(labs[1]!=0)&~((labs[0]==1)&(labs[1]==1))
     P = np.array(preds, dtype=object).reshape(2, -1);     
     eq = torch.from_numpy((P[0] != 'CONTRADICTION') & (P[1] != 'CONTRADICTION') & ~((P[0] == 'NEUTRAL') & (P[1] == 'NEUTRAL')))
     def find(x): 
@@ -32,6 +32,45 @@ def cluster_terms_by_nli(S, nli):
     roots=[find(i) for i in range(n)]
     mapping={r:i for i,r in enumerate(dict.fromkeys(roots))}
     return [mapping[r] for r in roots]
+
+##### below is  batched implementation of cluster_terms_by_nli, splitted into get_nli_labels and cluster_from_nli_labels
+
+
+def get_nli_labels(S_batch, nli, B=256):
+    metas, pairs = [], []
+    for S in S_batch:
+        if not S: metas.append((0,0)); continue
+        n=len(S); A,Bb=[t.tolist() for t in torch.triu_indices(n,n,1)]
+        f=[{"text":S[i],"text_pair":S[j]} for i,j in zip(A,Bb)]
+        metas.append((n,len(f))); pairs+=f+[{"text":S[j],"text_pair":S[i]} for i,j in zip(A,Bb)]
+    preds=[max(r,key=lambda d:d["score"])["label"]
+           for k in range(0,len(pairs),B)
+           for r in nli(pairs[k:k+B], batch_size=B, truncation=True, top_k=None)]
+    output, pos = [], 0
+    for n,M in metas:
+        P = np.empty((2,0),dtype=object) if n==0 else np.array(preds[pos:pos+2*M],dtype=object).reshape(2,M); pos += 0 if n==0 else 2*M
+        output.append({"n":n,"P":P})
+    return output
+
+
+def cluster_from_nli_labels(labels):
+    output=[]
+    for e in labels:
+        n,P=e["n"],e["P"]
+        if n==0: output.append([]); continue
+        A,B=torch.triu_indices(n,n,1)
+        eq=torch.from_numpy((P[0]!='CONTRADICTION') & (P[1]!='CONTRADICTION') & ~((P[0]=='NEUTRAL') & (P[1]=='NEUTRAL')))
+        par=list(range(n))
+        def find(x):
+            while par[x]!=x: par[x]=par[par[x]]; x=par[x]
+            return x
+        for u,v in zip(A[eq].tolist(),B[eq].tolist()):
+            ru,rv=find(u),find(v)
+            if ru!=rv: par[rv]=ru
+        roots=[find(i) for i in range(n)]
+        mapping={r:i for i,r in enumerate(dict.fromkeys(roots))}
+        output.append([mapping[r] for r in roots])
+    return output
 
 def cluster_terms_by_embedding(S, embed_method, threshold=None, topk=None, metric="cosine"):
     E = F.normalize(torch.stack([embed_method(t.strip().lower()) for t in S]).float(), p=2, dim=-1).numpy()

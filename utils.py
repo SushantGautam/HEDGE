@@ -22,11 +22,9 @@ import asyncio
 dummy_embedding_method = lambda x:  torch.randn(768, generator=torch.Generator().manual_seed(int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)))
 
 class DummyNLI:
-    def __init__(self): self.model=type('',(),{'config':type('',(),{'label2id':{'CONTRADICTION':0,'NEUTRAL':1,'ENTAILMENT':2}})()})()
-    def __call__(self,x,batch_size=64,**kw):
-        L=list(self.model.config.label2id)
-        return [[{'label':l,'score':1.0 if i==int(hashlib.sha256(json.dumps(xi,sort_keys=True).encode()).hexdigest(),16)%len(L)else 0.0}for i,l in enumerate(L)]for xi in x]
-
+    def __init__(self,seed=42): torch.manual_seed(seed);self.model=type('',(),{'config':type('',(),{'label2id':{'CONTRADICTION':0,'NEUTRAL':1,'ENTAILMENT':2}})()})()
+    def __call__(self,x,batch_size=64, *args, **kwargs):
+        return [[{'label':l,'score':1.0 if i==torch.randint(0,len(self.model.config.label2id),(1,),generator=torch.Generator().manual_seed(int(hashlib.sha256(str(s).encode()).hexdigest(),16)%(2**32))).item()else 0.0}for i,l in enumerate(self.model.config.label2id)]for s in x]
 
 def get_embeddings_batch(texts, model_name="all-MiniLM-L6-v2", batch_size=16):
     from sentence_transformers import SentenceTransformer
