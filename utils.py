@@ -5,7 +5,6 @@ import albumentations as A
 import random
 import cv2
 from datasets import load_dataset
-import torch
 import numpy as np
 from tqdm import tqdm
 import os, re
@@ -23,9 +22,10 @@ import asyncio
 dummy_embedding_method = lambda x:  torch.randn(768, generator=torch.Generator().manual_seed(int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)))
 
 class DummyNLI:
-    def __init__(self,seed=42): torch.manual_seed(seed);self.model=type('',(),{'config':type('',(),{'label2id':{'CONTRADICTION': 0, 'NEUTRAL': 1, 'ENTAILMENT': 2}})()})()
-    def __call__(self,x,batch_size=64): 
-        return [[{'label':l,'score':1.0 if i==torch.randint(0,len(self.model.config.label2id),(1,)).item()else 0.0}for i,l in enumerate(self.model.config.label2id)]for _ in x]
+    def __init__(self): self.model=type('',(),{'config':type('',(),{'label2id':{'CONTRADICTION':0,'NEUTRAL':1,'ENTAILMENT':2}})()})()
+    def __call__(self,x,batch_size=64,**kw):
+        L=list(self.model.config.label2id)
+        return [[{'label':l,'score':1.0 if i==int(hashlib.sha256(json.dumps(xi,sort_keys=True).encode()).hexdigest(),16)%len(L)else 0.0}for i,l in enumerate(L)]for xi in x]
 
 
 def get_embeddings_batch(texts, model_name="all-MiniLM-L6-v2", batch_size=16):
