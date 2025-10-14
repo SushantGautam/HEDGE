@@ -17,10 +17,12 @@ def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
 
 def cluster_terms_by_nli(S, nli):
     if not S: return []
-    n=len(S);A,B=torch.triu_indices(n,n,1)
+    n=len(S);A,B=torch.triu_indices(n,n,1); par=list(range(n))
     preds=[max(r,key=lambda d:d["score"])["label"] for r in nli([{"text":S[i],"text_pair":S[j]} for i,j in zip(A,B)] + [{"text":S[j],"text_pair":S[i]} for i,j in zip(A,B)], batch_size=64)]
-    labs=torch.tensor([nli.model.config.label2id[p] for p in preds]).reshape(2,-1)
-    eq=(labs[0]!=0)&(labs[1]!=0)&~((labs[0]==1)&(labs[1]==1));par=list(range(n))
+    # labs=torch.tensor([nli.model.config.label2id[p] for p in preds]).reshape(2,-1)
+    # eq=(labs[0]!=0)&(labs[1]!=0)&~((labs[0]==1)&(labs[1]==1))
+    P = np.array(preds, dtype=object).reshape(2, -1);     
+    eq = torch.from_numpy((P[0] != 'CONTRADICTION') & (P[1] != 'CONTRADICTION') & ~((P[0] == 'NEUTRAL') & (P[1] == 'NEUTRAL')))
     def find(x): 
         while par[x]!=x: par[x]=par[par[x]];x=par[x]
         return x
