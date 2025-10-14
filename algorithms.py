@@ -5,6 +5,7 @@ from scipy.sparse.csgraph import connected_components as CC
 from sklearn.neighbors import NearestNeighbors as NN
 import torch.nn.functional as F
 import itertools
+from tqdm import tqdm
 
 
 def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
@@ -20,6 +21,7 @@ def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
 def cluster_terms_by_nli(S, nli):
     if not S: return []
     n=len(S);A,B=torch.triu_indices(n,n,1); par=list(range(n))
+    S= [ep[:1000]for ep in S] # trim to 1000 characters to avoid CUDA OOM 
     preds=[max(r,key=lambda d:d["score"])["label"] for r in nli([{"text":S[i],"text_pair":S[j]} for i,j in zip(A,B)] + [{"text":S[j],"text_pair":S[i]} for i,j in zip(A,B)], batch_size=64)]
     P = np.array(preds, dtype=object).reshape(2, -1);     
     eq = torch.from_numpy((P[0] != 'CONTRADICTION') & (P[1] != 'CONTRADICTION') & ~((P[0] == 'NEUTRAL') & (P[1] == 'NEUTRAL')))
@@ -37,25 +39,29 @@ def cluster_terms_by_nli(S, nli):
 
 
 def get_nli_labels(S_batch, nli, B=256):
-    metas, pairs = [], []
-    for S in S_batch:
-        if not S: metas.append((0,0)); continue
-        n=len(S); A,Bb=[t.tolist() for t in torch.triu_indices(n,n,1)]
-        f=[{"text":S[i],"text_pair":S[j]} for i,j in zip(A,Bb)]
-        metas.append((n,len(f))); pairs+=f+[{"text":S[j],"text_pair":S[i]} for i,j in zip(A,Bb)]
-    preds=[max(r,key=lambda d:d["score"])["label"]
-           for k in range(0,len(pairs),B)
-           for r in nli(pairs[k:k+B], batch_size=B, truncation=True, top_k=None)]
-    output, pos = [], 0
-    for n,M in metas:
-        P = np.empty((2,0),dtype=object) if n==0 else np.array(preds[pos:pos+2*M],dtype=object).reshape(2,M); pos += 0 if n==0 else 2*M
-        output.append({"n":n,"P":P})
-    return output
+    ns    = [len(g) for g in S_batch]
+    idx_f = [[(g,i,j) for i in range(n) for j in range(i+1,n)] for g,n in enumerate(ns)]
+    idx   = list(itertools.chain.from_iterable(grp + [(g,j,i) for (g,i,j) in grp] for grp in idx_f))
+    pairs = [{"text": S_batch[g][i][:1000], "text_pair": S_batch[g][j][:1000]} for g,i,j in idx]
 
+    # dedup via dict comprehension (preserves order)
+    keys  = [(p["text"], p["text_pair"]) for p in pairs]
+    uniq  = {k: i for i, k in enumerate(dict.fromkeys(keys))}
+    u_pairs = [{"text": k[0], "text_pair": k[1]} for k in uniq]
+    map_ix  = [uniq[k] for k in keys]
+    print("Total unique pairs for NLI: ", len(u_pairs))
+    chunks = tqdm((nli(b, batch_size=B, truncation=True, top_k=None) for b in (u_pairs[k:k+B] 
+            for k in range(0, len(u_pairs), B))), total=(len(u_pairs)+B-1)//B, desc="Running NLI", unit="batch")
+    pu    = [max(r, key=lambda d: d["score"])["label"] for r in itertools.chain.from_iterable(chunks)]
+    preds = [pu[i] for i in map_ix] # map backed
+    lens   = [n*(n-1) for n in ns]
+    splits = list(itertools.accumulate(lens))[:-1] if lens else []
+    grouped= (np.split(np.array(preds, dtype=object), splits) if preds else [np.array([], dtype=object) for _ in ns])
+    return [{"n": n, "P": (np.empty((2,0), dtype=object) if n == 0 else g.reshape(2, -1))} for n,g in zip(ns, grouped)]
 
 def cluster_from_nli_labels(labels):
     output=[]
-    for e in labels:
+    for e in tqdm(labels, desc="Clustering from NLI labels", unit="item"):
         n,P=e["n"],e["P"]
         if n==0: output.append([]); continue
         A,B=torch.triu_indices(n,n,1)

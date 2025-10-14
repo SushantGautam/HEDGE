@@ -6,9 +6,7 @@ import random
 import cv2
 from datasets import load_dataset
 import numpy as np
-from tqdm import tqdm
 import os, re
-from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
 import json
@@ -18,6 +16,10 @@ import io
 import pandas as pd
 import tempfile
 import asyncio
+from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels, cluster_from_nli_labels
+from tqdm import tqdm
+tqdm.pandas() 
+
 
 dummy_embedding_method = lambda x:  torch.randn(768, generator=torch.Generator().manual_seed(int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)))
 
@@ -28,11 +30,13 @@ class DummyNLI:
 
 def get_embeddings_batch(texts, model_name="all-MiniLM-L6-v2", batch_size=16):
     from sentence_transformers import SentenceTransformer
+    flat = [t for row in texts for t in row]
+    uniq = list(dict.fromkeys(flat))
     model = SentenceTransformer(model_name)
-    uniq = list(set(texts))
-    emb = model.encode(uniq, convert_to_tensor=True, batch_size=batch_size)
-    m = dict(zip(uniq, emb))
-    return [m[t].cpu() for t in texts]
+    uniq_emb = model.encode(uniq, convert_to_tensor=True, batch_size=batch_size)
+    lookup = {u: e for u, e in zip(uniq, uniq_emb)}
+    out = [[lookup[t].cpu() for t in row] for row in texts]
+    return out
 
 
 def compute_metrics(n, cluster_ids, normal, noisy, normal_logs, noisy_logs, alpha):
@@ -242,3 +246,33 @@ def run_vllm_batch_from_list(model, inputs, allowed_media):
         print("Input payload written to:", input_file, "| Output will be at:", output_file, " and cleaned after use.")
         asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media))
         return [json.loads(line) for line in open(output_file)]
+
+def make_seq_for_clustering(row, alpha=1.0, thr=0.90):
+    normal = [d["ans"] for d in row.original_high_temp]
+    noisy = [d["ans"] for d in row.distorted_high_temp][:20]
+    logn = [np.mean(d["logprob"]) for d in row.original_high_temp]
+    logd = [np.mean(d["logprob"]) for d in row.distorted_high_temp][:20]
+    seq = [row.original_low_temp['ans']] + normal + noisy
+    n = len(normal)
+    return {"n": n, "seq_input": seq, "normal": normal, "noisy": noisy, "logn": logn, "logd": logd, "alpha": alpha}
+
+def apply_nli_clustering(dataframe, nli_model, batch_size=1024):
+    dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, axis=1)
+    all_sequences = [x["seq_input"] for x in dataframe["clustering_input"]]
+    nli_labels = get_nli_labels(all_sequences, nli_model, B=batch_size)
+    clusters = cluster_from_nli_labels(nli_labels)
+    dataframe["cluster_nli"] = clusters
+    dataframe["metrics_nli"] = dataframe.apply(
+        lambda row: compute_metrics(
+            n=row["clustering_input"]["n"],
+            cluster_ids=row["cluster_nli"],
+            normal=row["clustering_input"]["normal"],
+            noisy=row["clustering_input"]["noisy"],
+            normal_logs=row["clustering_input"]["logn"],
+            noisy_logs=row["clustering_input"]["logd"],
+            alpha=row["clustering_input"]["alpha"],
+        ),
+        axis=1,
+    )
+    dataframe = dataframe.drop(columns=["clustering_input"])
+    return dataframe
