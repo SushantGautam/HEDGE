@@ -100,16 +100,26 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
 
     def entry(m):
         d = root / m["img_name"]
-        dist = sorted((p.as_posix() for p in d.glob("distorted_*.png")), key=lambda x: int(pat_img.findall(x)[0]) if pat_img.findall(x) else -1)
-        return {"idx": m["idx"], "image_path": (d / "original.png").as_posix(), "question": m["question"], "answer": m["answer"], "distorted_image_paths": dist}
+        dist_all = sorted((p.as_posix() for p in d.glob("distorted_*.png")),
+                          key=lambda x: int(pat_img.findall(x)[0]) if pat_img.findall(x) else -1)
+        dist = dist_all[:num_samples]  # cap to requested num_samples
+        return {
+            "idx": m["idx"],
+            "image_path": (d / "original.png").as_posix(),
+            "question": m["question"],
+            "answer": m["answer"],
+            "distorted_image_paths": dist
+        }
 
     Kmax, meta_path = _max_meta(root)
 
     # READ-ONLY
     if vqa_dict is None:
         if Kmax and num_samples <= Kmax:
-            meta = json.loads(meta_path.read_text()); print(f"📂 Loaded {len(meta)} from {meta_path.name} (Kmax={Kmax}, req={num_samples})")
-            return [entry(m) for m in meta]
+            meta = json.loads(meta_path.read_text())
+            print(f"📂 Loaded {len(meta)} from {meta_path.name} (Kmax={Kmax}, req={num_samples})")
+            # return only num_samples entries
+            return [entry(m) for m in meta[:num_samples]]
         msg = "❌ Need more distortions than available and no data to generate.\n"
         if Kmax: msg += f"🗂️ Available for {dataset_id}: {Kmax}. Lower request ≤ {Kmax} or pass vqa_dict."
         else: msg += "🗂️ No cache yet. Pass vqa_dict to generate."
@@ -117,13 +127,14 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
 
     # RESET if forced
     if force_regenerate and root.exists():
-        print(f"⚠️ force_regenerate → rm -r {root}"); shutil.rmtree(root); root.mkdir(parents=True, exist_ok=True); Kmax, meta_path = 0, None
+        print(f"⚠️ force_regenerate → rm -r {root}")
+        shutil.rmtree(root); root.mkdir(parents=True, exist_ok=True); Kmax, meta_path = 0, None
 
     # If enough already, just load existing highest and ensure it's the single one
     if Kmax and num_samples <= Kmax and not force_regenerate:
         meta = json.loads(meta_path.read_text()); _cleanup_metas(meta_path)
         print(f"⏭️ Using cache (Kmax={Kmax} ≥ req={num_samples}); meta: {meta_path.name}")
-        return [entry(m) for m in meta]
+        return [entry(m) for m in meta[:num_samples]]
 
     # Build unique map
     unique, idx2name = {}, []
@@ -150,7 +161,7 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
     new_meta = root / f".completed_{num_samples}.json"; new_meta.write_text(json.dumps(meta))
     _cleanup_metas(new_meta)
     print(f"✅ Done: → {new_meta} (single meta maintained)")
-    return [entry(m) for m in meta]
+    return [entry(m) for m in meta[:num_samples]]
 
 
 
@@ -226,7 +237,7 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         "--model", model,
         "-i", input_file,
         "-o", output_file,
-        # "--allowed-local-media-path", allowed_media,
+        "--allowed-local-media-path", allowed_media,
         "--trust-remote-code",
         "--limit-mm-per-prompt", '{"image":1,"video":0}',
         "--dtype", "auto",
@@ -417,3 +428,41 @@ def optimized_cluster_threshold(df_vqa_rad, embedding_cached_fn, metric_path=('d
     best_score = func_to_optimize(best_t)
     print(f"best_t={best_t:.4f}, metric={best_score:.6f}")
     return best_t, dict(sorted(history.items()))
+
+
+PROMPT_VARIANTS = {
+    "default": [
+        {"role": "system", "content": "You are a medical image analysis expert."},
+        {"role": "user", "content": "<image> Answer this question as concisely as possible based on the provided image: {r.question}"},
+    ],
+    "Concise": [
+        {
+            "role": "system",
+            "content": (
+                "You are a medical vision-language assistant. "
+                "Given a medical image and a clinical question, provide only the minimal, clinically correct answer. "
+                "Answers may be 'yes', 'no', or a short medically relevant label (e.g., modality, anatomy, finding). "
+                "Do not generate full sentences, explanations, or extra text—only output exactly the expected label."
+            ),
+        },
+        {"role": "user", "content": "Question: {r.question}"},
+    ],
+    "SingleSentence": [
+        {"role": "system", "content": "You are a medical image analysis expert; always respond in no more than a single sentence."},
+        {"role": "user", "content": "<image> Answer this question as concisely as possible based on the provided image: {r.question}"},
+    ],
+    "ShortClinical": [
+        {
+            "role": "system",
+            "content": (
+                "You are a medical image analysis expert. "
+                "Given an image and a question, provide a concise and accurate response. "
+                "The answer should be a short phrase, slightly longer than a single label if needed, "
+                "but not a full grammatical sentence and without a period at the end. "
+                "Avoid explanations or extra text—only give the short direct answer."
+            ),
+        },
+        {"role": "user", "content": "Question: {r.question}"},
+    ],
+}
+
