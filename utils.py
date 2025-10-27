@@ -4,6 +4,7 @@ import torch
 import albumentations as A
 import random
 import cv2
+import re
 from datasets import load_dataset
 import numpy as np
 import os, re
@@ -15,10 +16,15 @@ from joblib import Parallel, delayed
 import io
 import pandas as pd
 import tempfile
+import optuna
 import asyncio
-from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels, cluster_from_nli_labels
+from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels
+from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 tqdm.pandas() 
+
+
+
 
 
 dummy_embedding_method = lambda x:  torch.randn(768, generator=torch.Generator().manual_seed(int(hashlib.sha256(x.encode()).hexdigest(), 16) % (2**32)))
@@ -220,7 +226,7 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         "--model", model,
         "-i", input_file,
         "-o", output_file,
-        "--allowed-local-media-path", allowed_media,
+        # "--allowed-local-media-path", allowed_media,
         "--trust-remote-code",
         "--limit-mm-per-prompt", '{"image":1,"video":0}',
         "--dtype", "auto",
@@ -233,7 +239,7 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         setattr(args, k, v)
     await run_batch_main(args)
 
-def run_vllm_batch_from_list(model, inputs, allowed_media):
+def run_vllm_batch_from_list(model, inputs, allowed_media, extra_cli_args={}):
     # Create a temporary directory to hold both input/output files
     with tempfile.TemporaryDirectory() as tmpdir:
         input_file = os.path.join(tmpdir, "input.jsonl")
@@ -242,7 +248,7 @@ def run_vllm_batch_from_list(model, inputs, allowed_media):
             for item in inputs:
                 f_in.write(json.dumps(item) + "\n")
         print("Input payload written to:", input_file, "| Output will be at:", output_file, " and cleaned after use.")
-        asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media))
+        asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media, extra_cli_args=extra_cli_args))
         return [json.loads(line) for line in open(output_file)]
 
 def make_seq_for_clustering(row, alpha=1.0):
@@ -301,3 +307,113 @@ def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90):
     )
     dataframe = dataframe.drop(columns=["clustering_input"])
     return dataframe
+
+
+evaluator_struct_output_schema={"type":"object","properties":{"reason":{"type":"string","description":"One short sentence (≤20 words) explaining why the generated_answer matches or doesn’t match the correct_answer."},"score":{"type":"integer","enum":[0,1],"description":"1 if semantically equivalent, 0 otherwise."}},"required":["reason","score"]}
+
+def build_message_for_evaluation(item, add_kvasir_description=False):
+    system_msg = """
+    You are a strict medical evaluator.
+
+    You will be given these inputs:
+    - question: the question asked about the medical image
+    """
+    if add_kvasir_description:
+        system_msg += """
+    - description: brief reference or hint describing what the image depicts
+    """
+
+    system_msg += """
+    - correct_answer: the clinically verified correct answer
+    - generated_answer: the answer produced by the vision-language model (VLM)
+
+    Your task:
+
+    - Compare the generated_answer with the correct_answer **only on clinical and semantic meaning.**
+    - Score as 0 **only if the generated_answer introduces false, contradictory, or medically incorrect information** compared to the correct_answer.
+    - Minor wording or phrasing differences are acceptable if meaning is equivalent.
+
+    Output format (STRICT JSON):
+
+    ```json
+    {"reason": "<one concise sentence (≤20 words)>", "score": 1 or 0}
+    ```
+
+    where:
+      - "reason": briefly explains why the answer matches or contradicts the correct answer.
+      - "score": 1 if clinically and semantically equivalent,
+                 0 if contradictory or factually incorrect.
+
+    Do not include any commentary or text outside the JSON block.
+    """
+
+    user_msg = f"""
+    question: {item['question']}
+    """
+    if add_kvasir_description:
+        user_msg += f"""
+    description: {item['description']}
+    """
+    user_msg += f"""
+    correct_answer: {item['answer']}
+    generated_answer: {item['original_low_temp']['ans']}
+    """
+
+    return [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg + " /no_think"}
+    ]
+
+
+
+
+def parse_vllm_outputs_from_evaluator(outputs):
+    print(f"Got {len(outputs)} outputs from vllm")
+    parsed_results=[]
+    for o in outputs:
+        try:
+            i=int(o.get("custom_id","unknown").split("-")[-1])
+            j=json.loads(re.findall(r'\{.*?\}',o.get("response",{}).get("body",{}).get("choices",[{}])[0].get("message",{}).get("content",""),re.S)[0])
+            assert int(j.get("score",-1)) in [0,1]
+        except Exception as e:
+            print(f"⚠️ Failed parsing for {o.get('custom_id')}: {e}"); j,i={},None
+        parsed_results.append({"custom_id":o.get("custom_id"),"idx":i,"result":int(j.get("score", -1))})
+    return {r["custom_id"]:r["result"] for r in parsed_results if r["result"] in [0,1]}
+
+
+def compute_vqa_rad_aucs(df):
+    aucs = {}
+    for variant_name, group in df.groupby("variant_name"):
+        aucs[variant_name] = {}
+        for mcol in [c for c in group.columns if c.startswith("metrics")]:
+            metrics_df = pd.json_normalize(group[mcol])
+            aucs[variant_name][mcol] = {
+                k: roc_auc_score(
+                    group.hallucination_label,
+                    v if k == "RadFlag" else 1 - v
+                )
+                for k, v in metrics_df.items()
+            }
+    return aucs
+
+def optimized_cluster_threshold(df_vqa_rad, embedding_cached_fn, metric_path=('default', 'metrics_embed', 'SE'),
+                       threshold_range=(0.8, 0.99), n_trials=20, debug=False):
+    history = {}
+    def func_to_optimize(threshold):
+        t = round(float(threshold), 6)
+        if t in history:
+            res = history[t]
+        else:
+            res = compute_vqa_rad_aucs(apply_embed_clustering(df_vqa_rad, embedding_cached_fn, threshold=t))
+            history[t] = res
+        if debug:
+            print(f"t={t} -> {res}")
+        for key in metric_path: metric = res[key]
+        return metric
+
+    study = optuna.create_study(direction="maximize")
+    study.optimize(lambda tr: func_to_optimize(tr.suggest_float("t", *threshold_range)), n_trials=n_trials)
+    best_t = study.best_params["t"]
+    best_score = func_to_optimize(best_t)
+    print(f"best_t={best_t:.4f}, metric={best_score:.6f}")
+    return best_t, dict(sorted(history.items()))

@@ -3,3 +3,4 @@ ms-swift>==3.8.3
 scikit-learn
 albumentations
 sentence-transformers
+optuna
