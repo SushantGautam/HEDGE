@@ -86,23 +86,28 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
     assert dataset_id and str(dataset_id).strip(), "❌ 'dataset_id' must be provided and non-empty."
     def _s(x): return re.sub(r'[^a-zA-Z0-9_-]', '_', x.strip())
     def _hash(img): return hashlib.md5(np.array(img).tobytes()).hexdigest()
-    pat_num = re.compile(r"\.completed_(\d+)\.json$"); pat_img = re.compile(r"distorted_(\d+)\.png")
+    pat_num = re.compile(r"\.completed_(\d+)\.json$")
+    pat_img = re.compile(r"distorted_(\d+)\.png")
 
-    root = (Path(HEDGE_cache_path) / "datasets" / _s(str(dataset_id))).resolve(); root.mkdir(parents=True, exist_ok=True)
+    root = (Path(HEDGE_cache_path) / "datasets" / _s(str(dataset_id))).resolve()
+    root.mkdir(parents=True, exist_ok=True)
 
     def _max_meta(r):
-        metas = [(int(m.group(1)), p) for p in r.glob(".completed_*.json") if (m:=pat_num.search(p.name))]
+        metas = [(int(m.group(1)), p) for p in r.glob(".completed_*.json") if (m := pat_num.search(p.name))]
         return (max(metas, key=lambda x: x[0]) if metas else (0, None))
 
     def _cleanup_metas(keep):
         for p in root.glob(".completed_*.json"):
-            if p != keep: p.unlink(missing_ok=True)
+            if p != keep:
+                p.unlink(missing_ok=True)
 
     def entry(m):
         d = root / m["img_name"]
-        dist_all = sorted((p.as_posix() for p in d.glob("distorted_*.png")),
-                          key=lambda x: int(pat_img.findall(x)[0]) if pat_img.findall(x) else -1)
-        dist = dist_all[:num_samples]  # cap to requested num_samples
+        dist_all = sorted(
+            (p.as_posix() for p in d.glob("distorted_*.png")),
+            key=lambda x: int(pat_img.findall(x)[0]) if pat_img.findall(x) else -1
+        )
+        dist = dist_all[:num_samples]  # ✅ only cap number of distorted images returned
         return {
             "idx": m["idx"],
             "image_path": (d / "original.png").as_posix(),
@@ -118,54 +123,66 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
         if Kmax and num_samples <= Kmax:
             meta = json.loads(meta_path.read_text())
             print(f"📂 Loaded {len(meta)} from {meta_path.name} (Kmax={Kmax}, req={num_samples})")
-            # return only num_samples entries
-            return [entry(m) for m in meta[:num_samples]]
+            return [entry(m) for m in meta]
         msg = "❌ Need more distortions than available and no data to generate.\n"
-        if Kmax: msg += f"🗂️ Available for {dataset_id}: {Kmax}. Lower request ≤ {Kmax} or pass vqa_dict."
-        else: msg += "🗂️ No cache yet. Pass vqa_dict to generate."
-        print(msg); raise SystemExit
+        if Kmax:
+            msg += f"🗂️ Available for {dataset_id}: {Kmax}. Lower request ≤ {Kmax} or pass vqa_dict."
+        else:
+            msg += "🗂️ No cache yet. Pass vqa_dict to generate."
+        print(msg)
+        raise SystemExit
 
     # RESET if forced
     if force_regenerate and root.exists():
         print(f"⚠️ force_regenerate → rm -r {root}")
-        shutil.rmtree(root); root.mkdir(parents=True, exist_ok=True); Kmax, meta_path = 0, None
+        shutil.rmtree(root)
+        root.mkdir(parents=True, exist_ok=True)
+        Kmax, meta_path = 0, None
 
     # If enough already, just load existing highest and ensure it's the single one
     if Kmax and num_samples <= Kmax and not force_regenerate:
-        meta = json.loads(meta_path.read_text()); _cleanup_metas(meta_path)
+        meta = json.loads(meta_path.read_text())
+        _cleanup_metas(meta_path)
         print(f"⏭️ Using cache (Kmax={Kmax} ≥ req={num_samples}); meta: {meta_path.name}")
-        return [entry(m) for m in meta[:num_samples]]
+        return [entry(m) for m in meta]
 
     # Build unique map
     unique, idx2name = {}, []
     for e in vqa_dict:
-        n = f"img_{_hash(e['image'])}"; idx2name.append(n); unique.setdefault(n, e["image"])
+        n = f"img_{_hash(e['image'])}"
+        idx2name.append(n)
+        unique.setdefault(n, e["image"])
 
     def process(n, im):
-        d = root / n; d.mkdir(parents=True, exist_ok=True)
+        d = root / n
+        d.mkdir(parents=True, exist_ok=True)
         o = d / "original.png"
-        if not o.exists(): im.save(o)
+        if not o.exists():
+            im.save(o)
         w, h = im.size
         cur = sum(1 for _ in d.glob("distorted_*.png"))
-        target = max(cur, Kmax)  # current max per-image in folder; we will top-up to num_samples
+        target = max(cur, Kmax)
         for k in range(min(target, num_samples), num_samples):
             out = d / f"distorted_{k}.png"
             if not out.exists():
-                arr = np.array(im); r = distort_image(h, w)(image=arr)["image"]; Image.fromarray(r).save(out)
+                arr = np.array(im)
+                r = distort_image(h, w)(image=arr)["image"]
+                Image.fromarray(r).save(out)
 
     print(f"⚙️ Topping up distortions to {num_samples} (was Kmax={Kmax}); n={len(unique)}, n_jobs={n_jobs}")
     Parallel(n_jobs=n_jobs)(delayed(process)(n, im) for n, im in tqdm(unique.items()))
 
     # Write fresh SINGLE meta at the highest (requested) k and delete others
-    meta = [{"idx": i, "img_name": idx2name[i], "question": e["question"], "answer": e["answer"]} for i, e in enumerate(vqa_dict)]
-    new_meta = root / f".completed_{num_samples}.json"; new_meta.write_text(json.dumps(meta))
+    meta = [{"idx": i, "img_name": idx2name[i], "question": e["question"], "answer": e["answer"]}
+            for i, e in enumerate(vqa_dict)]
+    new_meta = root / f".completed_{num_samples}.json"
+    new_meta.write_text(json.dumps(meta))
     _cleanup_metas(new_meta)
     print(f"✅ Done: → {new_meta} (single meta maintained)")
-    return [entry(m) for m in meta[:num_samples]]
+    return [entry(m) for m in meta]
 
 
-
-def generate_answers(vqa_rad_test, n_samples=20, min_temp=0.1, max_temp=1.0, prompt_variants=None):
+def generate_answers(vqa_rad_test, n_answers_high=20, min_temp=0.1, max_temp=1.0, prompt_variants=None):
     from tests.medgemma import infer_batched as infer_fn
 
     # 1) Build the base once
@@ -177,7 +194,7 @@ def generate_answers(vqa_rad_test, n_samples=20, min_temp=0.1, max_temp=1.0, pro
 
     df_input_base = pd.concat(
         [df_base,
-         pd.concat([df_base[df_base.is_original]] * n_samples, ignore_index=True).assign(temp=1.0)],
+         pd.concat([df_base[df_base.is_original]] * n_answers_high, ignore_index=True).assign(temp=1.0)],
         ignore_index=True
     ).reset_index(drop=True)
 
@@ -465,4 +482,3 @@ PROMPT_VARIANTS = {
         {"role": "user", "content": "Question: {r.question}"},
     ],
 }
-
