@@ -9,7 +9,7 @@ if __name__ == '__main__':
     # --- utils / algorithms (only what we actually use) ---
     from utils import (
         generate_and_cache_dataset,
-        generate_answers_vllm,
+        generate_answers,
         add_hallucination_labels_vllm,
         optimize_and_apply_embed_clustering,
         apply_nli_clustering,
@@ -23,16 +23,8 @@ if __name__ == '__main__':
     min_temp, max_temp,  dataset_id = 0.1, 1.0, "vqa_rad_test"
     n_samples = 10
     generated_data = generate_and_cache_dataset(dataset_id=dataset_id, num_samples=n_samples, vqa_dict=None, force_regenerate=False, n_jobs=40)[:10]
-    # breakpoint()
-    # df = generate_answers(
-    #     generated_data,
-    #     n_answers_high=n_samples,
-    #     min_temp=min_temp,
-    #     max_temp=max_temp,
-    #     prompt_variants=PROMPT_VARIANTS,
-    # )
 
-    df = generate_answers_vllm(
+    df = generate_answers(
         generated_data,
         n_answers_high=n_samples,
         min_temp=min_temp,

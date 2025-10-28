@@ -184,8 +184,8 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
     print(f"✅ Done: → {new_meta} (single meta maintained)")
     return [entry(m) for m in meta]
 
-
-def generate_answers(vqa_rad_test, n_answers_high=20, min_temp=0.1, max_temp=1.0, prompt_variants=None):
+# old method ,. .  use ms-swift 
+def generate_answers_swift(vqa_rad_test, n_answers_high=20, min_temp=0.1, max_temp=1.0, prompt_variants=None):
     from tests.medgemma import infer_batched as infer_fn
 
     # 1) Build the base once
@@ -496,8 +496,8 @@ def to_openai_multimodal_payload(old, question, image_urls):
     ]
 
 
-
-def generate_answers_vllm(
+# old method ,. .  use vllm
+def generate_answers(
     vqa_rad_test,
     n_answers_high=20,
     min_temp=0.1,
