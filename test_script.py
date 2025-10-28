@@ -36,7 +36,7 @@ if __name__ == '__main__': # guard  for multiprocessing
         min_temp=0.1,
         max_temp=1.0,
         prompt_variants=PROMPT_VARIANTS,
-        model="Qwen/Qwen2.5-VL-7B-Instruct",
+        model="Qwen/Qwen2-VL-2B-Instruct",
     )
     print("🧠 Answers generated successfully! 💬")
 
