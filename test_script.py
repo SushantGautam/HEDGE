@@ -44,7 +44,7 @@ if __name__ == '__main__': # guard  for multiprocessing
     # 3) Label hallucinations using a VLM judge
     print("🔍 Labeling hallucinations with Qwen3")
     answers = add_hallucination_labels_vllm(answers, model_name="Qwen/Qwen3-4B-Instruct-2507", dtype="auto")
-    breakpoint()
+
     print("🏷️ Hallucination labels added! ✅")
 
     # 4) Cluster by embeddings
