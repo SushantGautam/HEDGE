@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hedge" 
+name = "hedge-bench" 
 version = "0.1.0"
 description = "A utility library for dataset generation and clustering"
 readme = "README.md"
