@@ -6,7 +6,6 @@ if __name__ == '__main__':
     from datasets import load_dataset
     from transformers import pipeline
 
-    # --- utils / algorithms (only what we actually use) ---
     from utils import (
         generate_and_cache_dataset,
         generate_answers,
@@ -17,13 +16,12 @@ if __name__ == '__main__':
         PROMPT_VARIANTS,
     )
 
-    random.seed(42)
-    np.random.seed(42)
-
     min_temp, max_temp,  dataset_id = 0.1, 1.0, "vqa_rad_test"
-    n_samples = 10
-    generated_data = generate_and_cache_dataset(dataset_id=dataset_id, num_samples=n_samples, vqa_dict=None, force_regenerate=False, n_jobs=40)[:10]
+    n_samples = 3
 
+    vqa_dict = [ {"idx": i, "image": d["image"], "question": d["question"], "answer": d["answer"]} for i, d in enumerate(tqdm(load_dataset("flaviagiammarino/vqa-rad", split="test")))]
+    generated_data = generate_and_cache_dataset(dataset_id=dataset_id, num_samples=n_samples, vqa_dict=vqa_dict, force_regenerate=False, n_jobs=40)[:10]  # just select 10 samples for testing
+    breakpoint()
     df = generate_answers(
         generated_data,
         n_answers_high=n_samples,
@@ -32,7 +30,7 @@ if __name__ == '__main__':
         prompt_variants=PROMPT_VARIANTS,
         model="Qwen/Qwen2.5-VL-7B-Instruct",
     )
-
+    breakpoint()
     gt_map = {i: d["answer"] for i, d in enumerate(tqdm(load_dataset("flaviagiammarino/vqa-rad", split="test")))}
     df["answer"] = df["idx_img"].map(gt_map)
 

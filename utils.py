@@ -496,7 +496,7 @@ def to_openai_multimodal_payload(old, question, image_urls):
     ]
 
 
-# old method ,. .  use vllm
+# new method ,. .  use vllm
 def generate_answers(
     vqa_rad_test,
     n_answers_high=20,
@@ -508,9 +508,9 @@ def generate_answers(
     extra_cli_args=None):
     # 1) Build the base once
     df_base = pd.DataFrame(
-        [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True} for s in vqa_rad_test]
+        [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True, "true_answer": s.get("answer")} for s in vqa_rad_test]
         +
-        [{"idx_img": s["idx"], "question": s["question"], "image": img, "is_original": False}
+        [{"idx_img": s["idx"], "question": s["question"], "image": img, "is_original": False, "true_answer": s.get("answer")}
          for s in vqa_rad_test for img in s["distorted_image_paths"]]
     ).assign(temp=lambda d: d.is_original.map({True: 0.0, False: 1.0}))
 
@@ -578,8 +578,9 @@ def generate_answers(
 
         return pd.Series({
             "idx_img": g.idx_img.iloc[0],
-            "question": g.loc[g.is_original, "question"].iloc[0],
             "image": g.loc[g.is_original, "image"].iloc[0],
+            "question": g.loc[g.is_original, "question"].iloc[0],
+            "true_answer": g.loc[g.is_original, "true_answer"].iloc[0],
             "original_high_temp": pack(g.is_original & (g.temp == 1.0)),
             "distorted_high_temp": pack(~g.is_original & (g.temp == 1.0)),
             "original_low_temp": pack(g.is_original & (g.temp == 0.0))[0],
