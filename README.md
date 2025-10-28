@@ -59,7 +59,7 @@ answers = generate_answers(
 answers = add_hallucination_labels_vllm(answers)
 answers_embed, threshold, _ = optimize_and_apply_embed_clustering(answers)
 
-# 4) Optionally, refine clusters with an NLI model and compute ROC AUCs
+# 4) Optionally, also try clustering with an NLI model and compute ROC AUCs
 nli = pipeline("text-classification", model="microsoft/deberta-large-mnli", top_k=None, truncation=True)
 answers_clustered = apply_nli_clustering(answers_embed, nli, batch_size=768)
 
@@ -72,7 +72,6 @@ print(aucs)
 
 - `hedge_bench/algorithms.py` – reference implementations of uncertainty estimators, clustering strategies, and scoring utilities.
 - `hedge_bench/utils.py` – high-level helper functions for dataset caching, answer generation, labeling, and evaluation (as used in the quickstart example).
-- `tmp_test.py` – example script used during development for running the full pipeline locally.
 
 ## Citation
 
