@@ -37,12 +37,13 @@ if __name__ == '__main__': # guard  for multiprocessing
         max_temp=1.0,
         prompt_variants=PROMPT_VARIANTS,
         model="Qwen/Qwen2-VL-2B-Instruct",
+        extra_cli_args={"dtype":"auto"},
     )
     print("🧠 Answers generated successfully! 💬")
 
     # 3) Label hallucinations using a VLM judge
     print("🔍 Labeling hallucinations with Qwen3")
-    answers = add_hallucination_labels_vllm(answers, model_name="Qwen/Qwen3-4B-Instruct-2507")
+    answers = add_hallucination_labels_vllm(answers, model_name="Qwen/Qwen3-4B-Instruct-2507", dtype="auto")
     breakpoint()
     print("🏷️ Hallucination labels added! ✅")
 
