@@ -1,4 +1,4 @@
-from algorithms import sentence_semantic_entropy, radflag, vase
+from hedge.algorithms import sentence_semantic_entropy, radflag, vase
 import hashlib
 import torch
 import albumentations as A
@@ -18,7 +18,7 @@ import pandas as pd
 import tempfile
 import optuna
 import asyncio
-from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels, cluster_from_nli_labels
+from hedge.algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels, cluster_from_nli_labels
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 from functools import reduce
@@ -186,7 +186,7 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
 
 # old method ,. .  use ms-swift 
 def generate_answers_swift(vqa_rad_test, n_answers_high=20, min_temp=0.1, max_temp=1.0, prompt_variants=None):
-    from tests.medgemma import infer_batched as infer_fn
+    from hedge.tests.medgemma import infer_batched as infer_fn
 
     # 1) Build the base once
     df_base = pd.DataFrame(

@@ -6,7 +6,7 @@ if __name__ == '__main__':
     from datasets import load_dataset
     from transformers import pipeline
 
-    from utils import (
+    from hedge.utils import (
         generate_and_cache_dataset,
         generate_answers,
         add_hallucination_labels_vllm,
