@@ -3,17 +3,20 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hedge-bench" 
-version = "0.1.0"
+name = "hedge-bench"
+version = "0.1.2"
 description = "A utility library for dataset generation and clustering"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"  # <-- changed to simple SPDX string
 authors = [
     { name = "Sushant Gautam", email = "susant.gautam@gmail.com" }
 ]
 requires-python = ">=3.8"
-
 dynamic = ["dependencies"]
+
+[tool.setuptools]
+packages = ["hedge_bench"]          
+include-package-data = true
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
