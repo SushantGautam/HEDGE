@@ -413,7 +413,7 @@ def parse_vllm_outputs_from_evaluator(outputs):
     return {r["custom_id"]:r["result"] for r in parsed_results if r["result"] in [0,1]}
 
 
-def compute_vqa_rad_aucs(df):
+def compute_roc_aucs(df):
     aucs = {}
     for variant_name, group in df.groupby("variant_name"):
         aucs[variant_name] = {}
@@ -436,7 +436,7 @@ def optimized_cluster_threshold(df_vqa_rad, embedding_cached_fn, metric_path=('d
         if t in history:
             res = history[t]
         else:
-            res = compute_vqa_rad_aucs(apply_embed_clustering(df_vqa_rad, embedding_cached_fn, threshold=t))
+            res = compute_roc_aucs(apply_embed_clustering(df_vqa_rad, embedding_cached_fn, threshold=t))
             history[t] = res
         if debug:
             print(f"t={t} -> {res}")
@@ -505,8 +505,7 @@ def generate_answers_vllm(
     prompt_variants=None,
     model="google/medgemma-4b-it",  # change to your actual VLM
     max_completion_tokens=512,
-    extra_cli_args=None,
-):
+    extra_cli_args=None):
     # 1) Build the base once
     df_base = pd.DataFrame(
         [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True} for s in vqa_rad_test]
@@ -590,9 +589,101 @@ def generate_answers_vllm(
     all_dfs = []
     for variant_name, g_variant in df_input.groupby("variant_name"):
         all_dfs.append(
-            g_variant.groupby("idx_img", as_index=False)
-            .apply(collapse)
+            g_variant
+            .groupby("idx_img", group_keys=False)
+            .apply(lambda g: collapse(g.assign(idx_img=g.name)))
             .reset_index(drop=True)
         )
 
     return pd.concat(all_dfs, ignore_index=True)
+
+
+def add_hallucination_labels_vllm(
+    dataframe,
+    model_name="Qwen/Qwen3-30B-A3B",
+    reasoning_parser="qwen3",
+    evaluator_schema=None,
+    add_kvasir_description=False,
+    dtype="bfloat16",
+    tp_size=1,
+    gpu_mem_util=0.90,
+    enable_prefix_caching=True,
+    max_model_len=2500,
+    temperature=0.7,
+    top_p=0.8,
+    top_k=20,
+    min_p=0.0,
+    allowed_media=None,
+    max_completion_tokens=1000):
+    """Add hallucination labels to a dataframe using a vLLM evaluator model."""
+    assert "answer" in dataframe, "Column 'answer' not found in DataFrame"
+    if evaluator_schema is None:
+        evaluator_schema = evaluator_struct_output_schema
+
+    inputs = [
+        {
+            "custom_id": f"hedge-{i}",
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": {
+                "messages": build_message_for_evaluation(row, add_kvasir_description=add_kvasir_description),
+                "max_completion_tokens": max_completion_tokens,
+            },
+        }
+        for i, row in dataframe.iterrows()
+    ]
+
+    outputs = run_vllm_batch_from_list(
+        inputs=inputs,
+        model=model_name,
+        allowed_media=allowed_media,
+        extra_cli_args={
+            "reasoning-parser": reasoning_parser,
+            "structured-outputs-config": evaluator_schema,
+            "dtype": dtype,
+            "tensor-parallel-size": tp_size,
+            "gpu-memory-utilization": gpu_mem_util,
+            "enable-prefix-caching": enable_prefix_caching,
+            "max-model-len": max_model_len,
+            "override-generation-config": (
+                f'{{"temperature":{temperature},"top_p":{top_p},"top_k":{top_k},"min_p":{min_p}}}'
+            ),
+        },
+    )
+
+    hall_map = parse_vllm_outputs_from_evaluator(outputs)
+    dataframe["hallucination_label"] = dataframe.apply(lambda r: hall_map[f"hedge-{r.name}"], axis=1)
+    return dataframe
+
+
+
+
+def optimize_and_apply_embed_clustering(
+    df,
+    metric_path=("default", "metrics_embed", "SE"),
+    threshold_range=(0.8, 0.99),
+    n_trials=20,
+    batch_size=16,
+    debug=False,
+    embedding_cache=None,
+):
+    unique_answers = list({
+        a for r in df.apply(
+            lambda r: [d["ans"] for d in r["original_high_temp"]]
+                    + [d["ans"] for d in r["distorted_high_temp"]]
+                    + [r["original_low_temp"]["ans"]],
+            axis=1
+        ) for a in r if isinstance(a, str)
+    })
+
+    cache = embedding_cache or {}
+    to_embed = [a for a in unique_answers if a not in cache]
+    if to_embed:
+        cache.update(dict(zip(to_embed, get_embeddings_batch(to_embed, batch_size=batch_size))))
+    embed_fn = lambda x, _c=cache: _c.get(x)
+
+    thr, history = optimized_cluster_threshold(
+        df, embed_fn, metric_path=metric_path,
+        threshold_range=threshold_range, n_trials=n_trials, debug=debug
+    )
+    return apply_embed_clustering(df, embed_fn, threshold=thr), thr, history
