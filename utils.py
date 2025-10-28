@@ -414,6 +414,7 @@ def parse_vllm_outputs_from_evaluator(outputs):
 
 
 def compute_roc_aucs(df):
+    assert "hallucination_label" in df.columns, "DataFrame must contain 'hallucination_label' column."
     aucs = {}
     for variant_name, group in df.groupby("variant_name"):
         aucs[variant_name] = {}
@@ -668,6 +669,7 @@ def optimize_and_apply_embed_clustering(
     debug=False,
     embedding_cache=None,
 ):
+    assert "hallucination_label" in df.columns, "DataFrame must contain 'hallucination_label' column."
     unique_answers = list({
         a for r in df.apply(
             lambda r: [d["ans"] for d in r["original_high_temp"]]
