@@ -558,7 +558,7 @@ def generate_answers(
         model=model,
         # allow images to be sent from disk if your helper gates this
         allowed_media="/",
-        extra_cli_args={**{"dtype":"bfloat16", "tensor-parallel-size":1, "gpu-memory-utilization":0.9, "enable-prefix-caching":True, "max-model-len":2500}, **(extra_cli_args or {})}
+        extra_cli_args={**{"dtype":"auto", "tensor-parallel-size":1, "gpu-memory-utilization":0.9, "enable-prefix-caching":True, "max-model-len":2500}, **(extra_cli_args or {})}
     )
     outputs = sorted(outputs, key=lambda x: int(x["custom_id"].split('-')[-1]))
 
@@ -607,7 +607,7 @@ def add_hallucination_labels_vllm(
     reasoning_parser="qwen3",
     evaluator_schema=None,
     add_description=False,
-    dtype="bfloat16",
+    dtype="auto",
     tp_size=1,
     gpu_mem_util=0.90,
     enable_prefix_caching=True,
@@ -618,14 +618,21 @@ def add_hallucination_labels_vllm(
     min_p=0.0,
     allowed_media=None,
     max_completion_tokens=1000):
-    """Add hallucination labels to a dataframe using a vLLM evaluator model."""
+
     assert "true_answer" in dataframe, "Column 'true_answer' not found in DataFrame"
+
     if evaluator_schema is None:
         evaluator_schema = evaluator_struct_output_schema
 
+    df = dataframe.copy()
+
+    # --- Build a stable key for deduplication
+    df["_hedge_key"] = (df["image"].astype(str) + "||" +df["question"].astype(str) + "||" +df["true_answer"].astype(str))
+    df_unique = df.drop_duplicates(subset=["_hedge_key"]).copy().reset_index(drop=True)
+    key_to_custom_id = {k: f"hedge-{i}" for i, k in enumerate(df_unique["_hedge_key"])}
     inputs = [
         {
-            "custom_id": f"hedge-{i}",
+            "custom_id": key_to_custom_id[row["_hedge_key"]],
             "method": "POST",
             "url": "/v1/chat/completions",
             "body": {
@@ -633,9 +640,10 @@ def add_hallucination_labels_vllm(
                 "max_completion_tokens": max_completion_tokens,
             },
         }
-        for i, row in dataframe.iterrows()
+        for _, row in df_unique.iterrows()
     ]
 
+    # --- Run the evaluator once per unique key
     outputs = run_vllm_batch_from_list(
         inputs=inputs,
         model=model_name,
@@ -654,10 +662,11 @@ def add_hallucination_labels_vllm(
         },
     )
 
-    hall_map = parse_vllm_outputs_from_evaluator(outputs)
-    dataframe["hallucination_label"] = dataframe.apply(lambda r: hall_map[f"hedge-{r.name}"], axis=1)
-    return dataframe
-
+    id_to_score = parse_vllm_outputs_from_evaluator(outputs)
+    key_to_score = {k: id_to_score[cid] for k, cid in key_to_custom_id.items()}
+    df["hallucination_label"] = df["_hedge_key"].map(key_to_score)
+    df.drop(columns=["_hedge_key"], inplace=True)
+    return df
 
 
 
