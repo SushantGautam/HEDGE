@@ -343,14 +343,14 @@ def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90):
 
 evaluator_struct_output_schema={"type":"object","properties":{"reason":{"type":"string","description":"One short sentence (≤20 words) explaining why the generated_answer matches or doesn’t match the correct_answer."},"score":{"type":"integer","enum":[0,1],"description":"1 if semantically equivalent, 0 otherwise."}},"required":["reason","score"]}
 
-def build_message_for_evaluation(item, add_kvasir_description=False):
+def build_message_for_evaluation(item, add_description=False):
     system_msg = """
     You are a strict medical evaluator.
 
     You will be given these inputs:
     - question: the question asked about the medical image
     """
-    if add_kvasir_description:
+    if add_description:
         system_msg += """
     - description: brief reference or hint describing what the image depicts
     """
@@ -382,7 +382,7 @@ def build_message_for_evaluation(item, add_kvasir_description=False):
     user_msg = f"""
     question: {item['question']}
     """
-    if add_kvasir_description:
+    if add_description:
         user_msg += f"""
     description: {item['description']}
     """
@@ -605,7 +605,7 @@ def add_hallucination_labels_vllm(
     model_name="Qwen/Qwen3-30B-A3B",
     reasoning_parser="qwen3",
     evaluator_schema=None,
-    add_kvasir_description=False,
+    add_description=False,
     dtype="bfloat16",
     tp_size=1,
     gpu_mem_util=0.90,
@@ -628,7 +628,7 @@ def add_hallucination_labels_vllm(
             "method": "POST",
             "url": "/v1/chat/completions",
             "body": {
-                "messages": build_message_for_evaluation(row, add_kvasir_description=add_kvasir_description),
+                "messages": build_message_for_evaluation(row, add_description=add_description),
                 "max_completion_tokens": max_completion_tokens,
             },
         }
