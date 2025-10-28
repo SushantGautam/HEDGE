@@ -18,9 +18,12 @@ import pandas as pd
 import tempfile
 import optuna
 import asyncio
-from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels
+from algorithms import cluster_terms_by_embedding, cluster_terms_by_nli, get_nli_labels, cluster_from_nli_labels
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
+from functools import reduce
+import operator
+
 tqdm.pandas() 
 
 
@@ -248,6 +251,7 @@ def generate_answers(vqa_rad_test, n_answers_high=20, min_temp=0.1, max_temp=1.0
 async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cli_args={}): 
     from vllm.utils import FlexibleArgumentParser
     from vllm.entrypoints.openai.run_batch import make_arg_parser, main as run_batch_main
+    os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
     
     parser = make_arg_parser(FlexibleArgumentParser())
     args = parser.parse_args([
@@ -267,7 +271,7 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         setattr(args, k, v)
     await run_batch_main(args)
 
-def run_vllm_batch_from_list(model, inputs, allowed_media, extra_cli_args={}):
+def run_vllm_batch_from_list(model, inputs, allowed_media=None, extra_cli_args={}):
     # Create a temporary directory to hold both input/output files
     with tempfile.TemporaryDirectory() as tmpdir:
         input_file = os.path.join(tmpdir, "input.jsonl")
@@ -276,7 +280,7 @@ def run_vllm_batch_from_list(model, inputs, allowed_media, extra_cli_args={}):
             for item in inputs:
                 f_in.write(json.dumps(item) + "\n")
         print("Input payload written to:", input_file, "| Output will be at:", output_file, " and cleaned after use.")
-        asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media, extra_cli_args=extra_cli_args))
+        asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media or "", extra_cli_args=extra_cli_args))
         return [json.loads(line) for line in open(output_file)]
 
 def make_seq_for_clustering(row, alpha=1.0):
@@ -436,8 +440,7 @@ def optimized_cluster_threshold(df_vqa_rad, embedding_cached_fn, metric_path=('d
             history[t] = res
         if debug:
             print(f"t={t} -> {res}")
-        for key in metric_path: metric = res[key]
-        return metric
+        return reduce(operator.getitem, metric_path, res)
 
     study = optuna.create_study(direction="maximize")
     study.optimize(lambda tr: func_to_optimize(tr.suggest_float("t", *threshold_range)), n_trials=n_trials)
@@ -482,3 +485,114 @@ PROMPT_VARIANTS = {
         {"role": "user", "content": "Question: {r.question}"},
     ],
 }
+
+def to_openai_multimodal_payload(old, question, image_urls):
+    return [
+        {"role": m["role"],
+         "content": (
+             [{"type": "image_url", "image_url": {"url": u}} for u in image_urls] if m["role"] == "user" else []
+         ) + [{"type": "text", "text": m["content"].replace("{r.question}", question)}]}
+        for m in old
+    ]
+
+
+
+def generate_answers_vllm(
+    vqa_rad_test,
+    n_answers_high=20,
+    min_temp=0.1,
+    max_temp=1.0,
+    prompt_variants=None,
+    model="google/medgemma-4b-it",  # change to your actual VLM
+    max_completion_tokens=512,
+    extra_cli_args=None,
+):
+    # 1) Build the base once
+    df_base = pd.DataFrame(
+        [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True} for s in vqa_rad_test]
+        +
+        [{"idx_img": s["idx"], "question": s["question"], "image": img, "is_original": False}
+         for s in vqa_rad_test for img in s["distorted_image_paths"]]
+    ).assign(temp=lambda d: d.is_original.map({True: 0.0, False: 1.0}))
+
+    # 2) Replicate originals n_answers_high times at high temperature
+    df_input_base = pd.concat(
+        [
+            df_base,
+            pd.concat([df_base[df_base.is_original]] * n_answers_high, ignore_index=True).assign(temp=1.0),
+        ],
+        ignore_index=True,
+    ).reset_index(drop=True)
+
+    # 3) Copy per variant and tag
+    variant_names = list(prompt_variants.keys())
+    df_input = pd.concat(
+        [df_input_base.assign(variant_name=vn) for vn in variant_names],
+        ignore_index=True
+    ).reset_index(drop=True)
+
+    # 4) Build batched HTTP-style inputs for run_vllm_batch_from_list
+    
+    inputs = []
+    for i, row in df_input.iterrows():
+        body = {
+            "model": model,
+            "messages": to_openai_multimodal_payload( prompt_variants[row.variant_name], row.question, [f"file://{row.image}"]),
+            "max_completion_tokens": max_completion_tokens,
+            "temperature": min_temp if row.temp == 0.0 else max_temp,
+            "logprobs": True,
+            "top_logprobs": 1,
+        }
+
+        inputs.append({
+            "custom_id": f"vqa-{i}",
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": body,
+        })
+
+    # 5) Run vLLM
+    outputs = run_vllm_batch_from_list(
+        inputs=inputs,
+        model=model,
+        # allow images to be sent from disk if your helper gates this
+        allowed_media="/",
+        extra_cli_args={**{"dtype":"bfloat16", "tensor-parallel-size":1, "gpu-memory-utilization":0.9, "enable-prefix-caching":True, "max-model-len":2500}, **(extra_cli_args or {})}
+    )
+    outputs = sorted(outputs, key=lambda x: int(x["custom_id"].split('-')[-1]))
+
+    answers = []
+    logprobs_list = []
+    pat = re.compile(r"(?:<\|?.+?\|?>|\[[^\]]+\])")
+    for out in outputs:
+        answer = out['response']['body']['choices'][0]['message']['content'].strip()
+        logprobs = [t['logprob'] for t in out['response']['body']['choices'][0]['logprobs']['content'] if not pat.match(t['token'])]
+        answers.append(answer)
+        logprobs_list.append(logprobs)
+    df_input["answer"] = answers
+    df_input["logprobs"] = logprobs_list
+
+    # 7) Collapse per (idx_img, variant_name) into your desired structure
+    def collapse(g):
+        def pack(cond):
+            return [{"ans": a, "logprob": lp} for a, lp in zip(g.loc[cond, "answer"], g.loc[cond, "logprobs"])]
+
+        return pd.Series({
+            "idx_img": g.idx_img.iloc[0],
+            "question": g.loc[g.is_original, "question"].iloc[0],
+            "image": g.loc[g.is_original, "image"].iloc[0],
+            "original_high_temp": pack(g.is_original & (g.temp == 1.0)),
+            "distorted_high_temp": pack(~g.is_original & (g.temp == 1.0)),
+            "original_low_temp": pack(g.is_original & (g.temp == 0.0))[0],
+            "variant_name": g.variant_name.iloc[0],
+        })
+
+    all_dfs = []
+    for variant_name, g_variant in df_input.groupby("variant_name"):
+        all_dfs.append(
+            g_variant.groupby("idx_img", as_index=False)
+            .apply(collapse)
+            .reset_index(drop=True)
+        )
+
+    return pd.concat(all_dfs, ignore_index=True)
