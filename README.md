@@ -10,7 +10,7 @@ The utilities published in this repository are available on PyPI as [`hedge-benc
 pip install hedge-bench
 ```
 
-You can also install the package from source by cloning this repository and using `pip install -e .`.
+You can also install the package from source by `pip install git+https://github.com/SushantGautam/HEDGE.git`.
 
 ## Quickstart
 
