@@ -261,6 +261,7 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         "--allowed-local-media-path", allowed_media,
         "--trust-remote-code",
         "--limit-mm-per-prompt", '{"image":1,"video":0}',
+        "--max-model-len", "10000",
         "--dtype", "auto",
         "--max-logprobs", "1",  # cap on logprobs entries
         "--logprobs-mode", "raw_logprobs",  # normalized log-probabilities
