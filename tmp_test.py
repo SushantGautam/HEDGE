@@ -31,11 +31,7 @@ if __name__ == '__main__':
         model="Qwen/Qwen2.5-VL-7B-Instruct",
     )
     breakpoint()
-    gt_map = {i: d["answer"] for i, d in enumerate(tqdm(load_dataset("flaviagiammarino/vqa-rad", split="test")))}
-    df["answer"] = df["idx_img"].map(gt_map)
-
     df = add_hallucination_labels_vllm(df)
-
     df_embed, threshold, _ = optimize_and_apply_embed_clustering(df)
 
     # 5) AUCs after NLI clustering

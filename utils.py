@@ -387,7 +387,7 @@ def build_message_for_evaluation(item, add_kvasir_description=False):
     description: {item['description']}
     """
     user_msg += f"""
-    correct_answer: {item['answer']}
+    correct_answer: {item['true_answer']}
     generated_answer: {item['original_low_temp']['ans']}
     """
 
@@ -617,7 +617,7 @@ def add_hallucination_labels_vllm(
     allowed_media=None,
     max_completion_tokens=1000):
     """Add hallucination labels to a dataframe using a vLLM evaluator model."""
-    assert "answer" in dataframe, "Column 'answer' not found in DataFrame"
+    assert "true_answer" in dataframe, "Column 'true_answer' not found in DataFrame"
     if evaluator_schema is None:
         evaluator_schema = evaluator_struct_output_schema
 
