@@ -404,14 +404,16 @@ def parse_vllm_outputs_from_evaluator(outputs):
     print(f"Got {len(outputs)} outputs from vllm")
     parsed_results=[]
     for o in outputs:
+        i=int((o.get("custom_id","unknown")).split("-")[-1])
         try:
-            i=int(o.get("custom_id","unknown").split("-")[-1])
             j=json.loads(re.findall(r'\{.*?\}',o.get("response",{}).get("body",{}).get("choices",[{}])[0].get("message",{}).get("content",""),re.S)[0])
-            assert int(j.get("score",-1)) in [0,1]
+            score=int(j.get("score",-1))
+            assert score in [0,1]
         except Exception as e:
-            print(f"⚠️ Failed parsing for {o.get('custom_id')}: {e}"); j,i={},None
-        parsed_results.append({"custom_id":o.get("custom_id"),"idx":i,"result":int(j.get("score", -1))})
-    return {r["custom_id"]:r["result"] for r in parsed_results if r["result"] in [0,1]}
+            print(f"⚠️ Failed parsing for {o.get('custom_id')}: {e}")
+            score=-1
+        parsed_results.append({"custom_id":o.get("custom_id"),"idx":i,"result":score})
+    return {r["custom_id"]:r["result"] for r in parsed_results}
 
 
 def compute_roc_aucs(df):
