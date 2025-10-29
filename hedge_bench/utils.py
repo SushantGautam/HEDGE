@@ -116,6 +116,7 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
             "image_path": (d / "original.png").as_posix(),
             "question": m["question"],
             "answer": m["answer"],
+            "description": m.get("description", None),
             "distorted_image_paths": dist
         }
 
@@ -176,7 +177,7 @@ def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs
     Parallel(n_jobs=n_jobs)(delayed(process)(n, im) for n, im in tqdm(unique.items()))
 
     # Write fresh SINGLE meta at the highest (requested) k and delete others
-    meta = [{"idx": i, "img_name": idx2name[i], "question": e["question"], "answer": e["answer"]}
+    meta = [{"idx": i, "img_name": idx2name[i], "question": e["question"], "answer": e["answer"], "description": e.get("description", None)}
             for i, e in enumerate(vqa_dict)]
     new_meta = root / f".completed_{num_samples}.json"
     new_meta.write_text(json.dumps(meta))
