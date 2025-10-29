@@ -285,18 +285,21 @@ def run_vllm_batch_from_list(model, inputs, allowed_media=None, extra_cli_args={
         asyncio.run(run_vllm_batch(model, input_file, output_file, allowed_media or "", extra_cli_args=extra_cli_args))
         return [json.loads(line) for line in open(output_file)]
 
-def make_seq_for_clustering(row, alpha=1.0):
-    normal = [d["ans"] for d in row.original_high_temp]
-    noisy = [d["ans"] for d in row.distorted_high_temp][:20]
+def make_seq_for_clustering(row, alpha=1.0, append_question=False):
+    p = (row["question"] + " ") if append_question else ""
+    normal = [p + d["ans"] for d in row.original_high_temp]
+    noisy = [p + d["ans"] for d in row.distorted_high_temp][:20]
     logn = [np.mean(d["logprob"]) for d in row.original_high_temp]
     logd = [np.mean(d["logprob"]) for d in row.distorted_high_temp][:20]
-    seq = [row.original_low_temp['ans']] + normal + noisy
+    seq = [p + row.original_low_temp['ans']] + normal + noisy
     n = len(normal)
     return {"n": n, "seq_input": seq, "normal": normal, "noisy": noisy, "logn": logn, "logd": logd, "alpha": alpha}
 
-def apply_nli_clustering(dataframe, nli_model, batch_size=1024):
+
+def apply_nli_clustering(dataframe, nli_model, batch_size=1024, append_question=False):
     dataframe = dataframe.copy()
-    dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, axis=1)
+    dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, append_question=append_question,  axis=1)
+    breakpoint()
     all_sequences = [x["seq_input"] for x in dataframe["clustering_input"]]
     nli_labels = get_nli_labels(all_sequences, nli_model, B=batch_size)
     clusters = cluster_from_nli_labels(nli_labels)
@@ -317,9 +320,9 @@ def apply_nli_clustering(dataframe, nli_model, batch_size=1024):
     return dataframe
 
 
-def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90):
+def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90, append_question=False):
     dataframe = dataframex.copy()
-    dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, axis=1)
+    dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, append_question=append_question,  axis=1)
     all_sequences = [x["seq_input"] for x in dataframe["clustering_input"]]
     ids_embds = []
     for seq in tqdm(all_sequences, desc="Clustering all sequences by embedding", unit="sequence"):
@@ -434,14 +437,14 @@ def compute_roc_aucs(df):
     return aucs
 
 def optimized_cluster_threshold(df_vqa_rad, embedding_cached_fn, metric_path=('default', 'metrics_embed', 'SE'),
-                       threshold_range=(0.8, 0.99), n_trials=20, debug=False):
+                       threshold_range=(0.8, 0.99), n_trials=20, debug=False, append_question=False):
     history = {}
     def func_to_optimize(threshold):
         t = round(float(threshold), 6)
         if t in history:
             res = history[t]
         else:
-            res = compute_roc_aucs(apply_embed_clustering(df_vqa_rad, embedding_cached_fn, threshold=t))
+            res = compute_roc_aucs(apply_embed_clustering(df_vqa_rad, embedding_cached_fn, threshold=t, append_question=append_question))
             history[t] = res
         if debug:
             print(f"t={t} -> {res}")
@@ -682,6 +685,7 @@ def optimize_and_apply_embed_clustering(
     batch_size=16,
     debug=False,
     embedding_cache=None,
+    append_question=False
 ):
     assert "hallucination_label" in df.columns, "DataFrame must contain 'hallucination_label' column."
     unique_answers = list({
@@ -701,6 +705,6 @@ def optimize_and_apply_embed_clustering(
 
     thr, history = optimized_cluster_threshold(
         df, embed_fn, metric_path=metric_path,
-        threshold_range=threshold_range, n_trials=n_trials, debug=debug
+        threshold_range=threshold_range, n_trials=n_trials, debug=debug, append_question=append_question
     )
-    return apply_embed_clustering(df, embed_fn, threshold=thr), thr, history
+    return apply_embed_clustering(df, embed_fn, threshold=thr, append_question=append_question), thr, history
