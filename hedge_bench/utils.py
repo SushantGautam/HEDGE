@@ -299,7 +299,6 @@ def make_seq_for_clustering(row, alpha=1.0, append_question=False):
 def apply_nli_clustering(dataframe, nli_model, batch_size=1024, append_question=False):
     dataframe = dataframe.copy()
     dataframe["clustering_input"] = dataframe.progress_apply(make_seq_for_clustering, append_question=append_question,  axis=1)
-    breakpoint()
     all_sequences = [x["seq_input"] for x in dataframe["clustering_input"]]
     nli_labels = get_nli_labels(all_sequences, nli_model, B=batch_size)
     clusters = cluster_from_nli_labels(nli_labels)
