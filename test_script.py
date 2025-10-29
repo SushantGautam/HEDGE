@@ -54,7 +54,7 @@ if __name__ == '__main__': # guard  for multiprocessing
 
     # 5) Optionally, also try clustering with an NLI model
     print("🧮 Applying NLI-based clustering with DeBERTa...")
-    nli = pipeline("text-classification", model="microsoft/deberta-large-mnli", top_k=None, truncation=True)
+    nli = pipeline("text-classification", model="microsoft/deberta-large-mnli", top_k=None, truncation=True, max_length=512)
     answers_clustered = apply_nli_clustering(answers, nli, batch_size=64)
     print("📊 NLI clustering complete! 🧠")
 
