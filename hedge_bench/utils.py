@@ -345,16 +345,16 @@ def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90):
 
 evaluator_struct_output_schema={"type":"object","properties":{"reason":{"type":"string","description":"One short sentence (≤20 words) explaining why the generated_answer matches or doesn’t match the correct_answer."},"score":{"type":"integer","enum":[0,1],"description":"1 if semantically equivalent, 0 otherwise."}},"required":["reason","score"]}
 
-def build_message_for_evaluation(item, add_description=False):
+def build_message_for_evaluation(item, add_description=True):
     system_msg = """
     You are a strict medical evaluator.
 
     You will be given these inputs:
     - question: the question asked about the medical image
     """
-    if add_description:
+    if add_description and item.get("description", None):
         system_msg += """
-    - description: brief reference or hint describing what the image depicts
+    - description: clarifies what the question expects 
     """
 
     system_msg += """
@@ -384,7 +384,7 @@ def build_message_for_evaluation(item, add_description=False):
     user_msg = f"""
     question: {item['question']}
     """
-    if add_description:
+    if add_description and item.get("description", None):
         user_msg += f"""
     description: {item['description']}
     """
@@ -513,9 +513,9 @@ def generate_answers(
     extra_cli_args=None):
     # 1) Build the base once
     df_base = pd.DataFrame(
-        [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True, "true_answer": s.get("answer")} for s in vqa_rad_test]
+        [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True, "true_answer": s.get("answer"), "description": s.get("description")} for s in vqa_rad_test]
         +
-        [{"idx_img": s["idx"], "question": s["question"], "image": img, "is_original": False, "true_answer": s.get("answer")}
+        [{"idx_img": s["idx"], "question": s["question"], "image": img, "is_original": False, "true_answer": s.get("answer"), "description": s.get("description")}
          for s in vqa_rad_test for img in s["distorted_image_paths"]]
     ).assign(temp=lambda d: d.is_original.map({True: 0.0, False: 1.0}))
 
@@ -586,6 +586,7 @@ def generate_answers(
             "image": g.loc[g.is_original, "image"].iloc[0],
             "question": g.loc[g.is_original, "question"].iloc[0],
             "true_answer": g.loc[g.is_original, "true_answer"].iloc[0],
+            "description": g.loc[g.is_original, "description"].iloc[0],
             "original_high_temp": pack(g.is_original & (g.temp == 1.0)),
             "distorted_high_temp": pack(~g.is_original & (g.temp == 1.0)),
             "original_low_temp": pack(g.is_original & (g.temp == 0.0))[0],
@@ -609,7 +610,7 @@ def add_hallucination_labels_vllm(
     model_name="Qwen/Qwen3-30B-A3B",
     reasoning_parser="qwen3",
     evaluator_schema=None,
-    add_description=False,
+    add_description=True,
     dtype="auto",
     tp_size=1,
     gpu_mem_util=0.90,
