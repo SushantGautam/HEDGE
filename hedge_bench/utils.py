@@ -288,9 +288,9 @@ def run_vllm_batch_from_list(model, inputs, allowed_media=None, extra_cli_args={
 def make_seq_for_clustering(row, alpha=1.0, append_question=False):
     p = (row["question"] + " ") if append_question else ""
     normal = [p + d["ans"] for d in row.original_high_temp]
-    noisy = [p + d["ans"] for d in row.distorted_high_temp][:20]
+    noisy = [p + d["ans"] for d in row.distorted_high_temp]
     logn = [np.mean(d["logprob"]) for d in row.original_high_temp]
-    logd = [np.mean(d["logprob"]) for d in row.distorted_high_temp][:20]
+    logd = [np.mean(d["logprob"]) for d in row.distorted_high_temp]
     seq = [p + row.original_low_temp['ans']] + normal + noisy
     n = len(normal)
     return {"n": n, "seq_input": seq, "normal": normal, "noisy": noisy, "logn": logn, "logd": logd, "alpha": alpha}
@@ -688,13 +688,21 @@ def optimize_and_apply_embed_clustering(
 ):
     assert "hallucination_label" in df.columns, "DataFrame must contain 'hallucination_label' column."
     unique_answers = list({
-        a for r in df.apply(
-            lambda r: [d["ans"] for d in r["original_high_temp"]]
-                    + [d["ans"] for d in r["distorted_high_temp"]]
-                    + [r["original_low_temp"]["ans"]],
-            axis=1
-        ) for a in r if isinstance(a, str)
-    })
+            a for r in df.apply(
+                lambda row: [
+                    ((row["question"] + " ") if append_question else "") + d["ans"]
+                    for d in row["original_high_temp"]
+                ]
+                + [
+                    ((row["question"] + " ") if append_question else "") + d["ans"]
+                    for d in row["distorted_high_temp"]
+                ]
+                + [
+                    ((row["question"] + " ") if append_question else "") + row["original_low_temp"]["ans"]
+                ],
+                axis=1
+            ) for a in r if isinstance(a, str)
+        })
 
     cache = embedding_cache or {}
     to_embed = [a for a in unique_answers if a not in cache]
