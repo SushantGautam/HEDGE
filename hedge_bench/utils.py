@@ -709,8 +709,9 @@ def optimize_and_apply_embed_clustering(
     return apply_embed_clustering(df, embed_fn, threshold=thr, append_question=append_question), thr, history
 
 
-def clamp_distortions(df, max_distortions):
+def clamp_distortions(dfx, max_distortions):
     """Limit distortion samples in columns ending with '_high_temp'."""
+    df = dfx.copy()
     for c in df.filter(regex=r"_high_temp$"):
         df[c] = df[c].apply(lambda x: x[:max_distortions] if len(x) >= max_distortions else (
             print(f"⚠️ {c}: only {len(x)} (<{max_distortions})") or x))
