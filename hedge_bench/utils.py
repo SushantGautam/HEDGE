@@ -462,7 +462,7 @@ PROMPT_VARIANTS = {
         {"role": "system", "content": "You are a medical image analysis expert."},
         {"role": "user", "content": "<image> Answer this question as concisely as possible based on the provided image: {r.question}"},
     ],
-    "Concise": [
+    "minimal-label": [
         {
             "role": "system",
             "content": (
@@ -472,13 +472,13 @@ PROMPT_VARIANTS = {
                 "Do not generate full sentences, explanations, or extra text—only output exactly the expected label."
             ),
         },
-        {"role": "user", "content": "Question: {r.question}"},
+        {"role": "user", "content": "<image> Question: {r.question}"},
     ],
-    "SingleSentence": [
+    "one-sentence": [
         {"role": "system", "content": "You are a medical image analysis expert; always respond in no more than a single sentence."},
         {"role": "user", "content": "<image> Answer this question as concisely as possible based on the provided image: {r.question}"},
     ],
-    "ShortClinical": [
+    "clinical-phrase": [
         {
             "role": "system",
             "content": (
@@ -489,7 +489,7 @@ PROMPT_VARIANTS = {
                 "Avoid explanations or extra text—only give the short direct answer."
             ),
         },
-        {"role": "user", "content": "Question: {r.question}"},
+        {"role": "user", "content": "<image> Question: {r.question}"},
     ],
 }
 
