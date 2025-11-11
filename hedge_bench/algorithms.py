@@ -20,22 +20,24 @@ def sentence_semantic_entropy(mean_log_liks, semantic_ids, eps=1e-38):
     entropy = -(group_probs * log_group_probs).sum()
     return entropy, group_probs
 
-def cluster_terms_by_nli(S, nli):
+def cluster_terms_by_nli(S, nli, batch_size=64, max_len=200):
     if not S: return []
-    n=len(S);A,B=torch.triu_indices(n,n,1); par=list(range(n))
-    S = [ep[:200]for ep in S] # trim to 200 characters to avoid CUDA OOM 
-    preds=[max(r,key=lambda d:d["score"])["label"] for r in nli([{"text":S[i],"text_pair":S[j]} for i,j in zip(A,B)] + [{"text":S[j],"text_pair":S[i]} for i,j in zip(A,B)], batch_size=64)]
-    P = np.array(preds, dtype=object).reshape(2, -1);     
-    eq = torch.from_numpy((P[0] != 'CONTRADICTION') & (P[1] != 'CONTRADICTION') & ~((P[0] == 'NEUTRAL') & (P[1] == 'NEUTRAL')))
-    def find(x): 
-        while par[x]!=x: par[x]=par[par[x]];x=par[x]
-        return x
-    for u,v in zip(A[eq].tolist(),B[eq].tolist()):
-        ru,rv=find(u),find(v)
-        if ru!=rv: par[rv]=ru
-    roots=[find(i) for i in range(n)]
-    mapping={r:i for i,r in enumerate(dict.fromkeys(roots))}
-    return [mapping[r] for r in roots]
+    S=[s[:max_len] for s in S]; n=len(S)
+    ids=[-1]*n; next_id=0
+    for i in range(n):
+        if ids[i]!=-1: continue
+        ids[i]=next_id
+        if i+1<n:
+            js=list(range(i+1,n))
+            R=nli([{"text":S[i],"text_pair":S[j]} for j in js]
+                  +[{"text":S[j],"text_pair":S[i]} for j in js],
+                  batch_size=batch_size)
+            L=np.array([max(r,key=lambda d:d["score"])["label"] for r in R],dtype=object).reshape(2,-1)
+            eq=(L[0]!='CONTRADICTION')&(L[1]!='CONTRADICTION')&~((L[0]=='NEUTRAL')&(L[1]=='NEUTRAL'))
+            for j in (k for k,m in zip(js,eq.tolist()) if m): ids[j]=next_id
+        next_id+=1
+    assert -1 not in ids
+    return ids
 
 ##### below is  batched implementation of cluster_terms_by_nli, splitted into get_nli_labels and cluster_from_nli_labels
 
@@ -72,23 +74,28 @@ def get_nli_labels(S_batch, nli, B=256):
     return [{"n": n, "P": (np.empty((2,0), dtype=object) if n == 0 else g.reshape(2, -1))} for n,g in zip(ns, grouped)]
 
 def cluster_from_nli_labels(labels):
-    output=[]
-    for e in tqdm(labels, desc="Clustering from NLI labels", unit="item"):
-        n,P=e["n"],e["P"]
-        if n==0: output.append([]); continue
-        A,B=torch.triu_indices(n,n,1)
-        eq=torch.from_numpy((P[0]!='CONTRADICTION') & (P[1]!='CONTRADICTION') & ~((P[0]=='NEUTRAL') & (P[1]=='NEUTRAL')))
-        par=list(range(n))
-        def find(x):
-            while par[x]!=x: par[x]=par[par[x]]; x=par[x]
-            return x
-        for u,v in zip(A[eq].tolist(),B[eq].tolist()):
-            ru,rv=find(u),find(v)
-            if ru!=rv: par[rv]=ru
-        roots=[find(i) for i in range(n)]
-        mapping={r:i for i,r in enumerate(dict.fromkeys(roots))}
-        output.append([mapping[r] for r in roots])
-    return output
+    out = []
+    for e in labels:
+        n, P = e["n"], e["P"]
+        if n == 0: out.append([]); continue
+        A, B = torch.triu_indices(n, n, 1)
+        eq = (P[0] != 'CONTRADICTION') & (P[1] != 'CONTRADICTION') & ~((P[0] == 'NEUTRAL') & (P[1] == 'NEUTRAL'))
+        # preindex: for each pivot i, which upper-tri positions (k) correspond to (i, j)
+        idxs = [[] for _ in range(n)]
+        At, Bt = A.tolist(), B.tolist()
+        for k, (u, v) in enumerate(zip(At, Bt)):
+            idxs[u].append((k, v))
+        ids = [-1]*n; next_id = 0
+        for i in range(n):
+            if ids[i] != -1: continue
+            ids[i] = next_id
+            for k, j in idxs[i]:
+                if eq[k]: ids[j] = next_id
+            next_id += 1
+        assert -1 not in ids
+        out.append(ids)
+    return out
+
 
 def cluster_terms_by_embedding(S, embed_method, threshold=None, topk=None, metric="cosine"):
     E = F.normalize(torch.stack([embed_method(t) for t in S]).float(), p=2, dim=-1).numpy()
