@@ -684,7 +684,8 @@ def optimize_and_apply_embed_clustering(
     batch_size=16,
     debug=False,
     embedding_cache=None,
-    append_question=False
+    append_question=False,
+    model_name="all-MiniLM-L6-v2"  # ← added
 ):
     assert "hallucination_label" in df.columns, "DataFrame must contain 'hallucination_label' column."
     unique_answers = list({
@@ -707,7 +708,7 @@ def optimize_and_apply_embed_clustering(
     cache = embedding_cache or {}
     to_embed = [a for a in unique_answers if a not in cache]
     if to_embed:
-        cache.update(dict(zip(to_embed, get_embeddings_batch(to_embed, batch_size=batch_size))))
+        cache.update(dict(zip(to_embed, get_embeddings_batch(to_embed, model_name=model_name, batch_size=batch_size))))
     embed_fn = lambda x, _c=cache: _c.get(x)
 
     thr, history = optimized_cluster_threshold(
@@ -715,7 +716,6 @@ def optimize_and_apply_embed_clustering(
         threshold_range=threshold_range, n_trials=n_trials, debug=debug, append_question=append_question
     )
     return apply_embed_clustering(df, embed_fn, threshold=thr, append_question=append_question), thr, history
-
 
 def clamp_distortions(dfx, max_distortions):
     """Limit distortion samples in columns ending with '_high_temp'."""
