@@ -30,7 +30,7 @@ from hedge_bench.utils import (
     add_hallucination_labels_vllm,
     apply_nli_clustering,
     compute_roc_aucs,
-    generate_distortion_and_cache_dataset,
+    distort_and_cache_dataset,
     generate_answers,
     optimize_and_apply_embed_clustering,
 )
@@ -42,7 +42,7 @@ vqa_dict = [
     for i, sample in enumerate(load_dataset("flaviagiammarino/vqa-rad", split="test"))
 ][:10]
 
-generated = generate_distortion_and_cache_dataset(
+generated = distort_and_cache_dataset(
     dataset_id="vqa_rad_test",
     num_samples=n_samples,
     vqa_dict=vqa_dict,
