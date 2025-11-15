@@ -7,7 +7,7 @@ if __name__ == '__main__': # guard  for multiprocessing
         add_hallucination_labels_vllm,
         apply_nli_clustering,
         compute_roc_aucs,
-        generate_and_cache_dataset,
+        generate_distortion_and_cache_dataset,
         generate_answers,
         optimize_and_apply_embed_clustering,
     )
@@ -19,7 +19,7 @@ if __name__ == '__main__': # guard  for multiprocessing
         {"idx": i, "image": sample["image"], "question": sample["question"], "answer": sample["answer"]}
         for i, sample in enumerate(load_dataset("flaviagiammarino/vqa-rad", split="test"))
     ]
-    generated = generate_and_cache_dataset(
+    generated = generate_distortion_and_cache_dataset(
         dataset_id="vqa_rad_test",  # will cache with this name
         num_samples=n_samples,
         vqa_dict=vqa_dict,

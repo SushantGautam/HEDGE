@@ -85,7 +85,7 @@ def distort_image(h, w):
 
 HEDGE_cache_path= ".cache_HEDGE/"
 
-def generate_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs=20, force_regenerate=False):
+def generate_distortion_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs=20, force_regenerate=False):
     assert dataset_id and str(dataset_id).strip(), "❌ 'dataset_id' must be provided and non-empty."
     def _s(x): return re.sub(r'[^a-zA-Z0-9_-]', '_', x.strip())
     def _hash(img): return hashlib.md5(np.array(img).tobytes()).hexdigest()
