@@ -18,7 +18,7 @@ nli_time      = [19.24, 54.39, 105.93, 176.86, 267.76, 999.52, 2272.39, 4231.36,
 
 
 # --- GPU Data (NLI) ---
-nli_gpu_delta = [1848.2, 1945.7, 1945.7, 2073.3, 1986.1, 4396.5, 6356.8, 6356.8, 6444.06, 6356.78]
+nli_gpu_delta = [1848.2, 1945.7, 1945.7, 2073.1, 2073.3, 4396.5, 6356.8, 6356.8, 6444.06, 6444.78]
 nli_peak      = [3541.6, 3647.2, 3647.2, 3774.9, 3774.9, 6185.4, 8145.6, 8145.6, 8145.6, 8145.6]
 
 # --- 2. Reshape Data for Seaborn (Long-form) ---
@@ -46,7 +46,7 @@ df_gpu = pd.DataFrame({
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.5)
 
 # Side-by-side panels
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7), sharex=True)
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7), sharex=False)
 
 # --- Panel (a): Processing Time (Left) ---
 sns.lineplot(
@@ -89,8 +89,7 @@ sns.lineplot(
 
 ax2.set_ylim(bottom=0)
 ax2.set_ylabel('GPU Memory (MB)')
-ax2.set_xlabel('Sampling scale')
-ax2.set_xticks([1, 2, 3, 4, 5, 10, 15, 20, 25, 30])
+ax2.set_xlabel('Sampling scale - Logarithmic Scale')
 ax2.text(0.5, -0.18, '(b)', transform=ax2.transAxes,
          fontsize=16, fontweight='bold', ha='center', va='top')
 sns.move_legend(ax2, "upper left", bbox_to_anchor=(0, 1))
@@ -99,7 +98,11 @@ sns.move_legend(ax2, "upper left", bbox_to_anchor=(0, 1))
 for line_data in [nli_gpu_delta, nli_peak]:
     for i, val in enumerate(line_data):
         ax2.text(x[i], val, f'{val:.0f}', ha='center', va='bottom', fontsize=9)
+ax2.set_xscale('log')
+ax2.set_xticks([1, 2, 3, 4, 5, 10, 15, 20, 25, 30])
+ax2.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
 # --- 4. Final Touches ---
 plt.tight_layout(pad=1.0)
 plt.savefig('seaborn_side_by_side.pdf', bbox_inches='tight')
+plt.show()
