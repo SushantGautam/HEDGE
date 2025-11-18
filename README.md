@@ -1,6 +1,11 @@
 # HEDGE: Hallucination Estimation via Dense Geometric Entropy
 
-HEDGE provides the code and Python package that accompany the paper **"HEDGE: Hallucination Estimation via Dense Geometric Entropy for Medical VQA with Vision-Language Models."** The library offers utilities for sampling answers from multimodal models, clustering them through logical and embedding-based strategies, and computing hallucination detection metrics across benchmarks such as VQA-RAD and KvasirVQA.
+HEDGE provides the code and Python package that accompany the paper **"HEDGE: Hallucination Estimation via Dense Geometric Entropy for VQA with Vision-Language Models."** The library offers utilities for sampling answers from multimodal models, clustering them through logical and embedding-based strategies, and computing hallucination detection metrics across benchmarks such as VQA-RAD and KvasirVQA.
+
+> 🚧 **Work in Progress**  
+> This project will be continually updated.  
+> If you need **anything** or have questions, feel free to contact **sushant@simula.no** — he will reply promptly and provide any resources you need.
+
 
 ## Installation
 
@@ -10,7 +15,7 @@ The utilities published in this repository are available on PyPI as [`hedge-benc
 pip install hedge-bench
 ```
 
-You can also install the package from source by `pip install git+https://github.com/SushantGautam/HEDGE.git`.
+You should also be able to install the package from source by `pip install git+https://github.com/simula/HEDGE.git`.
 
 ## Quickstart
 
@@ -78,9 +83,11 @@ print(aucs)
 If you use HEDGE in your work, please cite the associated paper.
 
 ```
-HEDGE: Hallucination Estimation via Dense Geometric Entropy for Medical VQA with Vision-Language Models
-```
-
-## License
-
-This project is released under the MIT License. See `LICENSE` for details.
+@article{Gautam2025Nov,
+	author = {Gautam, Sushant and Riegler, Michael A. and Halvorsen, P{\aa}l},
+	title = {{HEDGE: Hallucination Estimation via Dense Geometric Entropy for VQA with Vision-Language Models}},
+	journal = {ArXiv e-prints},
+	year = {2025},
+	month = nov,
+	doi = {10.48550/arXiv.2511.12693}
+}```
