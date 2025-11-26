@@ -23,12 +23,13 @@ pip install hedge-bench
 
 ## 2. High-level pipeline
 
-1. `1_generate_answer.py` – distort & cache SoccerChat, generate answers with VLMs  
-2. `2_add_hallucination_label.py` – add hallucination labels via Qwen3-30B-A3B 
-3. `3_cluster.py` – embedding + NLI clustering, compute ROC–AUC for SE, RadFlag, VASE  
-4. `4_distortion_varying.py` – sweep distortion budgets + GPU profiling  
-5. `5_frame_pixel_vary.py` – vary frame rate and max pixels, regenerate answers  
-6. `4.1_add_hallucination_label.py` – hallucination labels for pixel/frame variants  
-7. `5.1_cluster.py` – clustering and AUCs for pixel/frame variants
+1. [`1_generate_answer.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/1_generate_answer.py) – distort & cache SoccerChat, generate answers with VLMs  
+2. [`2_add_hallucination_label.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/2_add_hallucination_label.py) – add hallucination labels via Qwen3-30B-A3B  
+3. [`3_cluster.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/3_cluster.py) – embedding + NLI clustering, compute ROC–AUC for SE, RadFlag, VASE  
+4. [`4_distortion_varying.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/4_distortion_varying.py) – sweep distortion budgets + GPU profiling  
+5. [`5_frame_pixel_vary.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/5_frame_pixel_vary.py) – vary frame rate and max pixels, regenerate answers  
+6. [`4.1_add_hallucination_label.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/4.1_add_hallucination_label.py) – hallucination labels for pixel/frame variants  
+7. [`5.1_cluster.py`](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge/5.1_cluster.py) – clustering and AUCs for pixel/frame variants  
+
 
 Run each script with `CUDA_VISIBLE_DEVICES=... python <script>.py` according to your setup.
