@@ -24,7 +24,7 @@ pip install hedge-bench
 ## 2. High-level pipeline
 
 1. `1_generate_answer.py` – distort & cache SoccerChat, generate answers with VLMs  
-2. `2_add_hallucination_label.py` – add hallucination labels via Qwen3-30B-A3B (`domain="sports"`)  
+2. `2_add_hallucination_label.py` – add hallucination labels via Qwen3-30B-A3B 
 3. `3_cluster.py` – embedding + NLI clustering, compute ROC–AUC for SE, RadFlag, VASE  
 4. `4_distortion_varying.py` – sweep distortion budgets + GPU profiling  
 5. `5_frame_pixel_vary.py` – vary frame rate and max pixels, regenerate answers  
