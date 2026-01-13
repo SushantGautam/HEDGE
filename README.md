@@ -72,6 +72,8 @@ aucs = compute_roc_aucs(answers_clustered)
 print(f"Embedding clustering optimal threshold = {threshold:.3f}")
 print(aucs)
 ```
+## VideoHedge
+To try with videos see [VideoHedge](https://github.com/SushantGautam/HEDGE/blob/main/VideoHedge.md).
 
 ## Project layout
 
