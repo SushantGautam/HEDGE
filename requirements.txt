@@ -1,5 +1,6 @@
 vllm==0.11.0
-scikit-learn
-albumentations
-sentence-transformers
-optuna
+scikit-learn==1.7.2
+albumentations==2.0.8
+sentence-transformers==5.1.1
+optuna==4.5.0
+datasets==4.2.0
