@@ -233,3 +233,6 @@ docs/CVIU-*.decision.md
 
 # Active pipeline scripts (despite tmp* rule)
 !experiments/tmp_2026_*.py
+
+# Rough experiment scripts — local only, not for GitHub
+experiments/
