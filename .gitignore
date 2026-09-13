@@ -236,3 +236,4 @@ docs/CVIU-*.decision.md
 
 # Rough experiment scripts — local only, not for GitHub
 experiments/
+logs/
