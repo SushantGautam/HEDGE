@@ -61,7 +61,9 @@ answers = generate_answers(
 )
 
 # 3) Label hallucinations using a VLM judge and cluster by embeddings
-answers = add_hallucination_labels_vllm(answers)
+#    you can also supply a custom message_builder if you need a different evaluation prompt
+answers = add_hallucination_labels_vllm(answers)  # default uses build_message_for_evaluation
+# e.g. answers = add_hallucination_labels_vllm(answers, message_builder=build_message_for_evaluation)
 answers_embed, threshold, _ = optimize_and_apply_embed_clustering(answers)
 
 # 4) Optionally, also try clustering with an NLI model and compute ROC AUCs

@@ -81,16 +81,42 @@ def distort_image(h, w):
     ]
   )
 
+def distort_video(inp, out):
+    import ffmpeg
+    b = random.uniform(-0.2, 0.2)                  # brightness
+    c = random.uniform(0.8, 1.2)                   # contrast
+    s = random.uniform(0.95, 1.05)                 # saturation
+    h = random.uniform(-0.02, 0.02) * 360          # hue deg
 
+    (
+        ffmpeg
+        .input(inp)
+        .filter('eq', brightness=b, contrast=c, saturation=s)
+        .filter('hue', h=h)
+        .filter('noise', alls=18, allf='t+u')
+        .output(out, vcodec='libx264', acodec='aac')
+        .overwrite_output()
+        .run()
+    )
 
 HEDGE_cache_path= ".cache_HEDGE/"
 
+
 def distort_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs=20, force_regenerate=False):
     assert dataset_id and str(dataset_id).strip(), "❌ 'dataset_id' must be provided and non-empty."
-    def _s(x): return re.sub(r'[^a-zA-Z0-9_-]', '_', x.strip())
-    def _hash(img): return hashlib.md5(np.array(img).tobytes()).hexdigest()
+
+    def _s(x): 
+        return re.sub(r'[^a-zA-Z0-9_-]', '_', x.strip())
+
+    # now hashes either an image object OR a video path
+    def _hash(obj):
+        if isinstance(obj, (str, Path)):
+            return hashlib.md5(str(obj).encode("utf-8")).hexdigest()
+        return hashlib.md5(np.array(obj).tobytes()).hexdigest()
+
     pat_num = re.compile(r"\.completed_(\d+)\.json$")
     pat_img = re.compile(r"distorted_(\d+)\.png")
+    pat_vid = re.compile(r"distorted_(\d+)\.mp4")
 
     root = (Path(HEDGE_cache_path) / "datasets" / _s(str(dataset_id))).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -106,19 +132,36 @@ def distort_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs=
 
     def entry(m):
         d = root / m["img_name"]
-        dist_all = sorted(
-            (p.as_posix() for p in d.glob("distorted_*.png")),
-            key=lambda x: int(pat_img.findall(x)[0]) if pat_img.findall(x) else -1
-        )
-        dist = dist_all[:num_samples]  # ✅ only cap number of distorted images returned
-        return {
-            "idx": m["idx"],
-            "image_path": (d / "original.png").as_posix(),
-            "question": m["question"],
-            "answer": m["answer"],
-            "description": m.get("description", None),
-            "distorted_image_paths": dist
-        }
+        is_video = m.get("is_video", False)
+
+        if is_video:
+            dist_all = sorted(
+                (p.as_posix() for p in d.glob("distorted_*.mp4")),
+                key=lambda x: int(pat_vid.findall(x)[0]) if pat_vid.findall(x) else -1
+            )
+            dist = dist_all[:num_samples]
+            return {
+                "idx": m["idx"],
+                "video_path": (d / "original.mp4").as_posix(),
+                "question": m["question"],
+                "answer": m["answer"],
+                "description": m.get("description", None),
+                "distorted_video_paths": dist,
+            }
+        else:
+            dist_all = sorted(
+                (p.as_posix() for p in d.glob("distorted_*.png")),
+                key=lambda x: int(pat_img.findall(x)[0]) if pat_img.findall(x) else -1
+            )
+            dist = dist_all[:num_samples]  # ✅ only cap number of distorted images returned
+            return {
+                "idx": m["idx"],
+                "image_path": (d / "original.png").as_posix(),
+                "question": m["question"],
+                "answer": m["answer"],
+                "description": m.get("description", None),
+                "distorted_image_paths": dist,
+            }
 
     Kmax, meta_path = _max_meta(root)
 
@@ -151,15 +194,47 @@ def distort_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs=
         return [entry(m) for m in meta]
 
     # Build unique map
-    unique, idx2name = {}, []
+    unique, idx2name, is_video_flags = {}, [], []
     for e in vqa_dict:
-        n = f"img_{_hash(e['image'])}"
-        idx2name.append(n)
-        unique.setdefault(n, e["image"])
+        if "video" in e:
+            media = e["video"]          # path to source video
+            is_video = True
+        elif "image" in e:
+            media = e["image"]          # image object
+            is_video = False
+        else:
+            raise ValueError("Each vqa_dict entry must have either 'image' or 'video' key.")
 
-    def process(n, im):
+        n = f"media_{_hash(media)}"
+        idx2name.append(n)
+        is_video_flags.append(is_video)
+        unique.setdefault(n, media)
+
+    def process(n, media):
         d = root / n
         d.mkdir(parents=True, exist_ok=True)
+
+        # 🔹 VIDEO BRANCH (media is a path)
+        if isinstance(media, (str, Path)):
+            import ffmpeg
+            src = Path(media)
+            o = d / "original.mp4"
+            if not o.exists():
+                # re-encode/copy into cache as mp4
+                fd= ffmpeg.input(str(src))
+                fd.output(str(o), vcodec="libx264", acodec="aac").run()
+
+            cur = sum(1 for _ in d.glob("distorted_*.mp4"))
+            target = max(cur, Kmax)
+            for k in range(min(target, num_samples), num_samples):
+                out = d / f"distorted_{k}.mp4"
+                if not out.exists():
+                    # TODO: adapt this call to your actual distort_video signature
+                    distort_video(str(o), str(out))
+            return
+
+        # 🔹 IMAGE BRANCH (original behavior)
+        im = media.convert("RGB")
         o = d / "original.png"
         if not o.exists():
             im.save(o)
@@ -174,11 +249,18 @@ def distort_and_cache_dataset(dataset_id, vqa_dict=None, num_samples=10, n_jobs=
                 Image.fromarray(r).save(out)
 
     print(f"⚙️ Topping up distortions to {num_samples} (was Kmax={Kmax}); n={len(unique)}, n_jobs={n_jobs}")
-    Parallel(n_jobs=n_jobs)(delayed(process)(n, im) for n, im in tqdm(unique.items()))
+    Parallel(n_jobs=n_jobs)(delayed(process)(n, media) for n, media in tqdm(unique.items()))
 
     # Write fresh SINGLE meta at the highest (requested) k and delete others
-    meta = [{"idx": i, "img_name": idx2name[i], "question": e["question"], "answer": e["answer"], "description": e.get("description", None)}
-            for i, e in enumerate(vqa_dict)]
+    meta = [{
+        "idx": i,
+        "img_name": idx2name[i],
+        "question": e["question"],
+        "answer": e["answer"],
+        "description": e.get("description", None),
+        "is_video": is_video_flags[i],
+    } for i, e in enumerate(vqa_dict)]
+
     new_meta = root / f".completed_{num_samples}.json"
     new_meta.write_text(json.dumps(meta))
     _cleanup_metas(new_meta)
@@ -261,7 +343,7 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
         "-o", output_file,
         "--allowed-local-media-path", allowed_media,
         "--trust-remote-code",
-        "--limit-mm-per-prompt", '{"image":1,"video":0}',
+        "--limit-mm-per-prompt", '{"image":1,"video":1}',
         "--max-model-len", "10000",
         "--dtype", "auto",
         "--max-logprobs", "1",  # cap on logprobs entries
@@ -269,8 +351,9 @@ async def run_vllm_batch(model, input_file, output_file, allowed_media, extra_cl
     ])
 
     setattr(args, "disable_frontend_multiprocessing", False)
-    for k, v in extra_cli_args.items():
-        setattr(args, k, v)
+    for k, v in (extra_cli_args or {}).items():
+        attr = k.replace("-", "_")
+        setattr(args, attr, v)
     await run_batch_main(args)
 
 def run_vllm_batch_from_list(model, inputs, allowed_media=None, extra_cli_args={}):
@@ -347,7 +430,7 @@ def apply_embed_clustering(dataframex, embedding_cached_fn, threshold=0.90, appe
 
 evaluator_struct_output_schema={"type":"object","properties":{"reason":{"type":"string","description":"One short sentence (≤20 words) explaining why the generated_answer matches or doesn’t match the correct_answer."},"score":{"type":"integer","enum":[0,1],"description":"1 if semantically equivalent, 0 otherwise."}},"required":["reason","score"]}
 
-def build_message_for_evaluation(item, add_description=True):
+def build_message_for_evaluation_medical(item, add_description=True):
     system_msg = """
     You are a strict medical evaluator.
 
@@ -372,7 +455,7 @@ def build_message_for_evaluation(item, add_description=True):
     Output format (STRICT JSON):
 
     ```json
-    {"reason": "<one concise sentence (≤20 words)>", "score": 1 or 0}
+    {"reason": "<one concise sentence ( less than 20 words)>", "score": 1 or 0}
     ```
 
     where:
@@ -400,7 +483,143 @@ def build_message_for_evaluation(item, add_description=True):
         {"role": "user", "content": user_msg + " /no_think"}
     ]
 
+def build_message_for_evaluation_general(item, add_description=True):
+    system_msg = """
+    You are a fair and careful evaluator of question–answer pairs in ANY domain
+    (e.g., medical, sports, science, general knowledge, etc.).
 
+    You will be given:
+    - question: the question asked about the input data (image, video, text, etc.)
+    """
+    if add_description and item.get("description", None):
+        system_msg += """
+    - description: optional clarification that gives more context about the scenario
+        """
+
+    system_msg += """
+    - correct_answer: the verified correct answer
+    - generated_answer: the answer produced by the model being evaluated
+
+    Your task:
+
+    - Compare generated_answer with correct_answer based ONLY on factual and semantic meaning.
+    - Focus on whether generated_answer correctly captures the MAIN information required by correct_answer.
+    - Paraphrasing, different wording, or additional consistent details are ACCEPTABLE.
+    - Extra details are fine as long as they do NOT contradict or change the meaning of correct_answer.
+    - Score as 1 if:
+        * the core meaning matches, AND
+        * there are no clearly wrong, contradictory, or misleading claims.
+    - Score as 0 if:
+        * the main meaning is different or missing, OR
+        * generated_answer introduces clear factual errors or contradictions.
+
+    When you are uncertain but the answer seems broadly consistent with correct_answer,
+    prefer score = 1.
+
+    Output format (STRICT JSON, single object):
+
+    {"reason": "<one concise sentence (less than 20 words)>", "score": 1 or 0}
+
+    where:
+      - "reason": briefly states why the answer matches or contradicts the correct answer.
+      - "score": 1 if it correctly reflects the main meaning of correct_answer,
+                 0 if it is clearly wrong, contradictory, or misses the main point.
+
+    Do NOT output anything outside this JSON object.
+    """
+
+    user_msg = f"""
+    question: {item['question']}
+    """
+    if add_description and item.get("description", None):
+        user_msg += f"""
+    description: {item['description']}
+    """
+    user_msg += f"""
+    correct_answer: {item['true_answer']}
+    generated_answer: {item['original_low_temp']['ans']}
+    """
+
+    return [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg + " /no_think"}
+    ]
+
+def build_message_for_evaluation(item, add_description=True):  # sports
+    task_type = item["variant_name"]
+
+    # --- Shared header ---
+    system_msg = """
+    You are a fair and careful evaluator of *sports video* question–answer pairs, focused on football (soccer).
+
+    You will be given:
+    - question: the exact text that was shown to the model being evaluated
+    """
+
+    if add_description and item.get("description", None):
+        system_msg += "- description: optional clarification (e.g., label taxonomy or extra notes about the task)\n"
+
+    system_msg += "- correct_answer: the verified correct answer\n- generated_answer: the answer produced by the model being evaluated\n\n"
+
+    # --- Task-specific instructions ---
+    if task_type == "EventClassification":
+        system_msg += """
+    Task type: EventClassification
+
+    - The video is ALWAYS a football (soccer) clip.
+    - The question is effectively: "Identify the single most relevant football event in the clip."
+    - correct_answer and generated_answer are usually SHORT LABELS from an event taxonomy
+    (e.g., "goal", "penalty", "foul", "corner kick", "kickoff", "no event", etc.).
+    - Treat labels as MATCHING if they clearly refer to the SAME underlying football event,
+    even if phrased slightly differently. Examples (should be scored as matching):
+        - "goal" vs "scores a goal" vs "scoring"
+        - "penalty" vs "penalty kick"
+        - "corner" vs "corner kick"
+        - "free kick" vs "direct free kick" (if taxonomy does not distinguish them)
+    - Score 0 when they are different event types
+    (e.g., "goal" vs "shot", "corner" vs "throw-in", "penalty" vs "foul").
+    - If one answer is a clear "no event" / "no significant event" and the other describes a
+    concrete football event, treat them as different and score 0.
+    """
+    elif task_type == "VideoQA":
+        system_msg += """
+    Task type: VideoQA
+
+    - The video is ALWAYS a football (soccer) clip.
+    - The question can be arbitrary about the clip (e.g., "Which team scored?", "What happens at the end?").
+    - The answers should be short and directly address the question.
+    - Consider descriptions using JERSEY COLORS vs TEAM NAMES as equivalent when they refer
+    to the same side (e.g., "blue team scores" vs "Team A scores" if clearly the same team in context).
+    - Paraphrasing, different wording, or additional consistent details are ACCEPTABLE.
+    - Extra details are fine as long as they do NOT contradict or change the meaning
+    of correct_answer.
+    """
+    else:
+        raise ValueError(f"Unknown task_type: {task_type}")
+
+    # --- JSON Output Enforcement (Added) ---
+    system_msg += """
+        Scoring guidelines (very important):
+
+        - If the generated_answer captures the same main fact/event as correct_answer,
+        even with minor wording differences or harmless extra detail, give score 1.
+        - Only give score 0 if the main fact/event is clearly different, missing, or contradicted.
+        Output format (STRICT JSON OBJECT, no code fences):
+
+        {"reason": "<one concise sentence (less than 20 words)>", "score": 0 or 1}
+        """
+
+    # --- User message ---
+    user_msg = f"""
+    task_type: {task_type}
+    question: {item['question']} """ 
+    if add_description and item.get("description", None): 
+        user_msg += f""" description: {item['description']} """ 
+    user_msg += f""" 
+    correct_answer: {item['true_answer']} 
+    generated_answer: {item['original_low_temp']['ans']} """ 
+    return [ {"role": "system", "content": system_msg}, {"role": "user", "content": user_msg + " /no_think"}, ]
+    
 
 
 def parse_vllm_outputs_from_evaluator(outputs):
@@ -493,14 +712,23 @@ PROMPT_VARIANTS = {
     ],
 }
 
-def to_openai_multimodal_payload(old, question, image_urls):
+def to_openai_multimodal_payload(old, question, image_urls=None, video_urls=None):
+    image_urls, video_urls = image_urls or [], video_urls or []
     return [
-        {"role": m["role"],
-         "content": (
-             [{"type": "image_url", "image_url": {"url": u}} for u in image_urls] if m["role"] == "user" else []
-         ) + [{"type": "text", "text": m["content"].replace("{r.question}", question)}]}
+        {
+            "role": m["role"],
+            "content":
+                (
+                    [{"type": "image_url", "image_url": {"url": u}} for u in image_urls] +
+                    [{"type": "video_url", "video_url": {"url": u}} for u in video_urls]
+                    if m["role"] == "user" else []
+                )
+                + [{"type": "text",
+                    "text": m["content"].replace("{r.question}", question)}]
+        }
         for m in old
     ]
+
 
 
 # new method ,. .  use vllm
@@ -513,19 +741,42 @@ def generate_answers(
     model="google/medgemma-4b-it",  # change to your actual VLM
     max_completion_tokens=512,
     extra_cli_args=None):
-    # 1) Build the base once
+
+    # 1) Build the base once (now supports image + video)
     df_base = pd.DataFrame(
-        [{"idx_img": s["idx"], "question": s["question"], "image": s["image_path"], "is_original": True, "true_answer": s.get("answer"), "description": s.get("description")} for s in vqa_rad_test]
+        # originals (image_path OR video_path)
+        [{
+            "idx_img": s["idx"],
+            "question": s["question"],
+            "media": s.get("image_path") or s.get("video_path"),
+            "is_video": s.get("video_path") is not None,
+            "is_original": True,
+            "true_answer": s.get("answer"),
+            "description": s.get("description"),
+        } for s in vqa_rad_test]
         +
-        [{"idx_img": s["idx"], "question": s["question"], "image": img, "is_original": False, "true_answer": s.get("answer"), "description": s.get("description")}
-         for s in vqa_rad_test for img in s["distorted_image_paths"]]
+        # distorted (from distorted_image_paths + distorted_video_paths)
+        [{
+            "idx_img": s["idx"],
+            "question": s["question"],
+            "media": p,
+            "is_video": p in (s.get("distorted_video_paths") or []),
+            "is_original": False,
+            "true_answer": s.get("answer"),
+            "description": s.get("description"),
+        }
+         for s in vqa_rad_test
+         for p in (s.get("distorted_image_paths") or []) + (s.get("distorted_video_paths") or [])]
     ).assign(temp=lambda d: d.is_original.map({True: 0.0, False: 1.0}))
 
     # 2) Replicate originals n_answers_high times at high temperature
     df_input_base = pd.concat(
         [
             df_base,
-            pd.concat([df_base[df_base.is_original]] * n_answers_high, ignore_index=True).assign(temp=1.0),
+            pd.concat(
+                [df_base[df_base.is_original]] * n_answers_high,
+                ignore_index=True
+            ).assign(temp=1.0),
         ],
         ignore_index=True,
     ).reset_index(drop=True)
@@ -538,12 +789,27 @@ def generate_answers(
     ).reset_index(drop=True)
 
     # 4) Build batched HTTP-style inputs for run_vllm_batch_from_list
-    
     inputs = []
     for i, row in df_input.iterrows():
+        media_url = f"file://{row.media}"
+        if row.is_video:
+            messages = to_openai_multimodal_payload(
+                prompt_variants[row.variant_name],
+                row.question,
+                image_urls=None,
+                video_urls=[media_url],
+            )
+        else:
+            messages = to_openai_multimodal_payload(
+                prompt_variants[row.variant_name],
+                row.question,
+                image_urls=[media_url],
+                video_urls=None,
+            )
+
         body = {
             "model": model,
-            "messages": to_openai_multimodal_payload( prompt_variants[row.variant_name], row.question, [f"file://{row.image}"]),
+            "messages": messages,
             "max_completion_tokens": max_completion_tokens,
             "temperature": min_temp if row.temp == 0.0 else max_temp,
             "logprobs": True,
@@ -561,9 +827,18 @@ def generate_answers(
     outputs = run_vllm_batch_from_list(
         inputs=inputs,
         model=model,
-        # allow images to be sent from disk if your helper gates this
+        # allow images/videos to be sent from disk if your helper gates this
         allowed_media="/",
-        extra_cli_args={**{"dtype":"auto", "tensor-parallel-size":1, "gpu-memory-utilization":0.9, "enable-prefix-caching":True, "max-model-len":2500}, **(extra_cli_args or {})}
+        extra_cli_args={
+            **{
+                "dtype": "auto",
+                "tensor-parallel-size": 1,
+                "gpu-memory-utilization": 0.9,
+                "enable-prefix-caching": True,
+                "max-model-len": 2500,
+            },
+            **(extra_cli_args or {}),
+        },
     )
     outputs = sorted(outputs, key=lambda x: int(x["custom_id"].split('-')[-1]))
 
@@ -571,21 +846,34 @@ def generate_answers(
     logprobs_list = []
     pat = re.compile(r"(?:<\|?.+?\|?>|\[[^\]]+\])")
     for out in outputs:
-        answer = out['response']['body']['choices'][0]['message']['content'].strip()
-        logprobs = [t['logprob'] for t in out['response']['body']['choices'][0]['logprobs']['content'] if not pat.match(t['token'])]
+        try:
+            choice = out["response"]["body"]["choices"][0]
+            answer = choice["message"]["content"].strip()
+            logprobs = [
+                t["logprob"]
+                for t in choice["logprobs"]["content"]
+                if not pat.match(t["token"])
+            ]
+        except Exception as e:
+            print(f"⚠️ Error parsing output for {out.get('custom_id')}: {e} | {out}")
+            raise e
         answers.append(answer)
         logprobs_list.append(logprobs)
+
     df_input["answer"] = answers
     df_input["logprobs"] = logprobs_list
 
     # 7) Collapse per (idx_img, variant_name) into your desired structure
     def collapse(g):
         def pack(cond):
-            return [{"ans": a, "logprob": lp} for a, lp in zip(g.loc[cond, "answer"], g.loc[cond, "logprobs"])]
+            return [
+                {"ans": a, "logprob": lp}
+                for a, lp in zip(g.loc[cond, "answer"], g.loc[cond, "logprobs"])
+            ]
 
         return pd.Series({
             "idx_img": g.idx_img.iloc[0],
-            "image": g.loc[g.is_original, "image"].iloc[0],
+            "media": g.loc[g.is_original, "media"].iloc[0],  # image OR video path
             "question": g.loc[g.is_original, "question"].iloc[0],
             "true_answer": g.loc[g.is_original, "true_answer"].iloc[0],
             "description": g.loc[g.is_original, "description"].iloc[0],
@@ -613,6 +901,7 @@ def add_hallucination_labels_vllm(
     reasoning_parser="qwen3",
     evaluator_schema=None,
     add_description=True,
+    message_builder=build_message_for_evaluation,  # allow custom message constructor
     dtype="auto",
     tp_size=1,
     gpu_mem_util=0.90,
@@ -633,7 +922,7 @@ def add_hallucination_labels_vllm(
     df = dataframe.copy()
 
     # --- Build a stable key for deduplication
-    df["_hedge_key"] = (df["image"].astype(str) + "||" +df["question"].astype(str) + "||" +df["true_answer"].astype(str))
+    df["_hedge_key"] = (df["media"].astype(str) + "||" +df["question"].astype(str) + "||" +df["true_answer"].astype(str))+"||"+df["variant_name"].astype(str)
     df_unique = df.drop_duplicates(subset=["_hedge_key"]).copy().reset_index(drop=True)
     key_to_custom_id = {k: f"hedge-{i}" for i, k in enumerate(df_unique["_hedge_key"])}
     inputs = [
@@ -642,7 +931,7 @@ def add_hallucination_labels_vllm(
             "method": "POST",
             "url": "/v1/chat/completions",
             "body": {
-                "messages": build_message_for_evaluation(row, add_description=add_description),
+                "messages": message_builder(row, add_description=add_description),
                 "max_completion_tokens": max_completion_tokens,
             },
         }
@@ -655,19 +944,18 @@ def add_hallucination_labels_vllm(
         model=model_name,
         allowed_media=allowed_media,
         extra_cli_args={
+            "enable-reasoning": False,
             "reasoning-parser": reasoning_parser,
-            "structured-outputs-config": evaluator_schema,
+            # "structured-outputs-config": evaluator_schema,
             "dtype": dtype,
             "tensor-parallel-size": tp_size,
             "gpu-memory-utilization": gpu_mem_util,
             "enable-prefix-caching": enable_prefix_caching,
             "max-model-len": max_model_len,
-            "override-generation-config": (
-                f'{{"temperature":{temperature},"top_p":{top_p},"top_k":{top_k},"min_p":{min_p}}}'
-            ),
+            "override-generation-config":{"temperature":temperature,"top_p":top_p,"top_k":top_k,"min_p":min_p}
+        ,
         },
     )
-
     id_to_score = parse_vllm_outputs_from_evaluator(outputs)
     key_to_score = {k: id_to_score[cid] for k, cid in key_to_custom_id.items()}
     df["hallucination_label"] = df["_hedge_key"].map(key_to_score)
