@@ -227,3 +227,6 @@ dist/
 *.egg-info/
 notebooks/
 redo_experimnts_2026/
+
+# Private / confidential (reviewer decision letters) — do not push
+docs/CVIU-*.decision.md

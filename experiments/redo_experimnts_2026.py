@@ -15,10 +15,10 @@ if __name__ == '__main__': # guard  for multiprocessing
         # "file": "../medgemma-4b-itkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 
         {"model": "Qwen2.5-VL-7B-Instruct", "dataset": "vqa_rad",
-        "file": "../Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "Qwen2.5-VL-7B-Instruct", "dataset": "kvasir_vqa_x1",
-        "file": "../Qwen2.5-VL-7B-Instructvqa_kvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/Qwen2.5-VL-7B-Instructvqa_kvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
     ]
 
     ## I suspect that add_hallucination_labels_vllm had problem with keys, so redo and see
@@ -67,6 +67,6 @@ if __name__ == '__main__': # guard  for multiprocessing
             print(f"Embedding clustering optimal threshold = {threshold:.3f}")
             # print(aucs)
             # save in redo_experimnts_2026, answers_clusteredas dataset_id.json and answers_clustered as dataset_id.parquet
-            with open(f"../redo_experimnts_2026/{finalfilename}.json", "w", encoding="utf-8") as f:
+            with open(f"../results/{finalfilename}.json", "w", encoding="utf-8") as f:
                 json.dump(aucs, f, ensure_ascii=False, indent=2)
-            answers_clustered.to_parquet(f"../redo_experimnts_2026/{finalfilename}", index=False)
+            answers_clustered.to_parquet(f"../results/{finalfilename}", index=False)
