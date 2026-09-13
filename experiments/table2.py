@@ -7,7 +7,7 @@ if __name__ == '__main__': # guard  for multiprocessing
     nli = pipeline("text-classification", model="microsoft/deberta-v2-xlarge-mnli", top_k=None, truncation=True, max_length=512)
     all_roc_aucs = {}
     thresholds = {}
-    parquet= "results/archive/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"
+    parquet= "../results/archive/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"
     answers_all = pd.read_parquet(parquet)
     for max_distortions in [30]:
         answers = clamp_distortions(answers_all, max_distortions=max_distortions)

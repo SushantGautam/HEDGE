@@ -8,7 +8,7 @@ from hedge_bench.utils import (
 )
 
 
-answers = pd.read_parquet("results/archive/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet")
+answers = pd.read_parquet("../results/archive/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet")
 answers = clamp_distortions(answers, max_distortions=10)
 
 # 1) 1 also try clustering with an NLI model

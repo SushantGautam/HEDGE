@@ -27,25 +27,25 @@ def compute_roc_aucs_by_variant(df):
 
 core_experiment_outputs = [
         {"model": "llava-med-v1.5-mistral-7b", "dataset": "vqa_rad",
-        "file": "../results/llava-med-v1.5-mistral-7b-hfvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/llava-med-v1.5-mistral-7b-hfvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "llava-med-v1.5-mistral-7b", "dataset": "kvasir_vqa_x1",
-        "file": "../results/llava-med-v1.5-mistral-7b-hfkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/llava-med-v1.5-mistral-7b-hfkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 
         {"model": "medgemma-4b-it", "dataset": "vqa_rad",
-        "file": "../results/medgemma-4b-itvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/medgemma-4b-itvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "medgemma-4b-it", "dataset": "kvasir_vqa_x1",
-        "file": "../results/medgemma-4b-itkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/medgemma-4b-itkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 
         {"model": "Qwen2.5-VL-7B-Instruct", "dataset": "vqa_rad",
-        "file": "../results/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "Qwen2.5-VL-7B-Instruct", "dataset": "kvasir_vqa_x1",
-        "file": "../results/Qwen2.5-VL-7B-Instructvqa_kvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/Qwen2.5-VL-7B-Instructvqa_kvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 
         {"model": "clustered-v1", "dataset": "POPE",
-        "file": "../results/caches/tmp_2026_pope.py.answers.clustered-v1.pickle"},
+        "file": "../results/redo_2026/tmp_2026_pope.py.answers.clustered-v1.pickle"},
 
 ]
 

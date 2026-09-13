@@ -3,22 +3,22 @@ import pandas as pd
 
 core_experiment_outputs = [
         {"model": "llava-med-v1.5-mistral-7b", "dataset": "vqa_rad",
-        "file": "../results/llava-med-v1.5-mistral-7b-hfvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/llava-med-v1.5-mistral-7b-hfvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "llava-med-v1.5-mistral-7b", "dataset": "kvasir_vqa_x1",
-        "file": "../results/llava-med-v1.5-mistral-7b-hfkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/llava-med-v1.5-mistral-7b-hfkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 
         {"model": "medgemma-4b-it", "dataset": "vqa_rad",
-        "file": "../results/medgemma-4b-itvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/medgemma-4b-itvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "medgemma-4b-it", "dataset": "kvasir_vqa_x1",
-        "file": "../results/medgemma-4b-itkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/medgemma-4b-itkvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 
         {"model": "Qwen2.5-VL-7B-Instruct", "dataset": "vqa_rad",
-        "file": "../results/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/Qwen2.5-VL-7B-Instructvqa_rad_test_answers_hallucination_label_added.parquet"},
 
         {"model": "Qwen2.5-VL-7B-Instruct", "dataset": "kvasir_vqa_x1",
-        "file": "../results/Qwen2.5-VL-7B-Instructvqa_kvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
+        "file": "../results/redo_2026/Qwen2.5-VL-7B-Instructvqa_kvasir_vqa_x1_test_answers_hallucination_label_added.parquet"},
 ]
 import json
 answer_only = {}
@@ -34,7 +34,7 @@ for output in core_experiment_outputs:
             finalfilename = f"{filename}_append_question.parquet"
         print(f"Model: {output['model']}, Dataset: {output['dataset']}, File: {output['file']}")
         
-        path = f"../results/{finalfilename}.json"
+        path = f"../results/redo_2026/{finalfilename}.json"
         data = json.load(open(path, 'r'))
         # make all values to 3 decimal places recursively
         def round_values(obj):

@@ -87,7 +87,7 @@ no, <why you think the answer is no>.
     )
     # # save as tmp_2026_pope.py.answers.pickle
     # breakpoint()
-    with open("../results/caches/tmp_2026_pope.py.answers.pickle", "wb") as f:
+    with open("../results/redo_2026/tmp_2026_pope.py.answers.pickle", "wb") as f:
         pickle.dump(answers, f)
 
     # answers = pickle.load(open("/home/sushant/D1/HEDGE/tmp_2026_pope.py.answers.clustered.pickle", "rb"))
@@ -97,11 +97,11 @@ no, <why you think the answer is no>.
     # # 3) Label hallucinations using a VLM judge
     # print("🔍 Labeling hallucinations with Qwen3")
     import pandas as pd
-    # answers = pd.read_pickle("../results/caches/tmp_2026_pope.py.answers.clustered.pickle")
+    # answers = pd.read_pickle("../results/redo_2026/tmp_2026_pope.py.answers.clustered.pickle")
     answers = add_hallucination_labels_vllm(answers, model_name="Qwen/Qwen3-30B-A3B", dtype="auto", message_builder=build_message_for_evaluation_general)
 
-    with open("../results/caches/tmp_2026_pope.py.filtered_answers_with_label.pickle", "wb") as f: pickle.dump(answers, f)
-    # answers = pickle.load(open("../results/caches/tmp_2026_pope.py.filtered_answers_with_label.pickle", "rb"))
+    with open("../results/redo_2026/tmp_2026_pope.py.filtered_answers_with_label.pickle", "wb") as f: pickle.dump(answers, f)
+    # answers = pickle.load(open("../results/redo_2026/tmp_2026_pope.py.filtered_answers_with_label.pickle", "rb"))
 
     print("🏷️ Hallucination labels added! ✅")
 
@@ -126,8 +126,8 @@ no, <why you think the answer is no>.
 
     print("🎉 Pipeline completed successfully! ✅✨")
     # answers_clustered to pickle
-    with open("../results/caches/tmp_2026_pope.py.answers.clustered-v1.pickle", "wb") as f: pickle.dump(answers_clustered, f)
+    with open("../results/redo_2026/tmp_2026_pope.py.answers.clustered-v1.pickle", "wb") as f: pickle.dump(answers_clustered, f)
     # save aucs_nli
-    with open("../results/caches/tmp_2026_pope.py.answers.clustered-v1.json", "w") as f: json.dump(aucs_nli, f)
+    with open("../results/redo_2026/tmp_2026_pope.py.answers.clustered-v1.json", "w") as f: json.dump(aucs_nli, f)
 
     # breakpoint()

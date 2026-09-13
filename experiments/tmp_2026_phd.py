@@ -86,7 +86,7 @@ no, <why you think the answer is no>.
     #     extra_cli_args={"dtype":"auto"},
     # )
     # save as tmp_2026_phd.py.answers.pickle
-    # with open("../results/caches/tmp_2026_phd.py.answers.pickle", "wb") as f:
+    # with open("../results/redo_2026/tmp_2026_phd.py.answers.pickle", "wb") as f:
     #     pickle.dump(answers, f)
     # import pickle
     # answers = pickle.load(open("/home/sushant/D1/HEDGE/tmp_2026_phd.py.filtered_answers_with_label_no_desc.pickle", "rb"))
@@ -101,9 +101,9 @@ no, <why you think the answer is no>.
     # answers = add_hallucination_labels_vllm(answers, model_name="Qwen/Qwen3-30B-A3B", dtype="auto", message_builder=build_message_for_evaluation_general)
     # use Qwen/Qwen3-30B-A3B in real
     # breakpoint()
-    # with open("../results/caches/tmp_2026_phd.py.filtered_answers_with_label_no_desc.pickle", "wb") as f: pickle.dump(answers, f)
+    # with open("../results/redo_2026/tmp_2026_phd.py.filtered_answers_with_label_no_desc.pickle", "wb") as f: pickle.dump(answers, f)
     # import pickle
-    # answers = pickle.load(open("../results/caches/tmp_2026_phd.py.filtered_answers_with_label.pickle", "rb"))
+    # answers = pickle.load(open("../results/redo_2026/tmp_2026_phd.py.filtered_answers_with_label.pickle", "rb"))
     # answers['task'] = answers['idx_img'].map(lambda x: vqa_all_dict[x]['category'])
     # answers['modes'] = answers['idx_img'].map(lambda x: vqa_all_dict[x]['modes'])
     # answers = pickle.load(open("/home/sushant/D1/HEDGE/tmp_2026_phd.py.filtered_answers_with_label_no_desc.pickle", "rb"))
@@ -117,7 +117,7 @@ no, <why you think the answer is no>.
     
     # # breakpoint()
     # # 4) Cluster by embeddings
-    answers = pickle.load(open("../results/caches/tmp_2026_phd.py.answers.clustered-no_description.pickle", "rb"))
+    answers = pickle.load(open("../results/redo_2026/tmp_2026_phd.py.answers.clustered-no_description.pickle", "rb"))
 
     print("🧩 Performing embedding-based clustering...")
     answers_embed, threshold, _ = optimize_and_apply_embed_clustering(answers, metric_path=('minimal-label', 'metrics_embed', 'VASE'))
@@ -129,7 +129,7 @@ no, <why you think the answer is no>.
     breakpoint()
 
     # 5) Optionally, also try clustering with an NLI model
-        # with open("../results/caches/tmp_2026_phd.py.answers.clustered-no_description.pickle", "wb") as f: pickle.dump(answers_clustered, f)
+        # with open("../results/redo_2026/tmp_2026_phd.py.answers.clustered-no_description.pickle", "wb") as f: pickle.dump(answers_clustered, f)
     print("🧮 Applying NLI-based clustering with DeBERTa...")
     from transformers import pipeline
     nli = pipeline("text-classification", model="microsoft/deberta-large-mnli", top_k=None, truncation=True, max_length=512)
@@ -143,9 +143,9 @@ no, <why you think the answer is no>.
     print("🎉 Pipeline completed successfully! ✅✨")
 
     # answers_clustered to pickle
-    # with open("../results/caches/tmp_2026_phd.py.answers.clustered-no_description.pickle", "wb") as f: pickle.dump(answers_clustered, f)
+    # with open("../results/redo_2026/tmp_2026_phd.py.answers.clustered-no_description.pickle", "wb") as f: pickle.dump(answers_clustered, f)
     # # save aucs_nli
-    # with open("../results/caches/tmp_2026_phd.py.answers.clustered-no_description.json", "w") as f: json.dump(aucs_nli, f)
+    # with open("../results/redo_2026/tmp_2026_phd.py.answers.clustered-no_description.json", "w") as f: json.dump(aucs_nli, f)
     # # breakpoint()
     
     answers_clustered['task'] = answers_clustered['idx_img'].map(lambda x: vqa_all_dict[x]['category'])
