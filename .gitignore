@@ -217,3 +217,13 @@ __marimo__/
 tmp*
 .cache*
 *.parquet
+# --- HEDGE local data & artifacts (never commit) ---
+.cache_HEDGE/
+wandb/
+*.pickle
+*.parquet
+results/
+dist/
+*.egg-info/
+notebooks/
+redo_experimnts_2026/

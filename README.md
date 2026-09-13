@@ -81,6 +81,11 @@ To try with videos see [VideoHedge](https://github.com/SushantGautam/HEDGE/blob/
 
 - `hedge_bench/algorithms.py` – reference implementations of uncertainty estimators, clustering strategies, and scoring utilities.
 - `hedge_bench/utils.py` – high-level helper functions for dataset caching, answer generation, labeling, and evaluation (as used in the quickstart example).
+- `VideoHedge/` – video hallucination pipeline (answer generation, labeling, clustering, distortion-varying experiments).
+- `experiments/` – paper experiment scripts (2026 re-runs, table generation, combine utilities); `experiments/archive/` holds superseded versions.
+- `results/` – cached experiment outputs (parquet/pickle; gitignored). `results/archive/` holds stale Oct-2025 runs superseded by `redo_experimnts_2026/`.
+- `docs/` – methodology notes and reviewer decision letters.
+- `.cache_HEDGE/` – distorted-dataset cache (gitignored, expensive to regenerate).
 
 ## Citation
 
